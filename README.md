@@ -1,37 +1,95 @@
-# obmm
+# OBMM: 基于所有权的内存管理组件
 
-#### 介绍
-User-space ownership-based memory management component - the underlying infrastructure for heterogeneous memory pooling.
+[![License](https://img.shields.io/badge/License-GPL--2.0-blue.svg)](https://opensource.org/licenses/GPL-2.0)
+[![Kernel Version](https://img.shields.io/badge/Kernel-6.x%2B-green.svg)](https://www.kernel.org/)
+[![Unified Bus](https://img.shields.io/badge/SIG--Long-%E7%81%B5%E8%A1%A2(UnifiedBus)-green.svg)](https://www.kernel.org/)
+[![CXL](https://img.shields.io/badge/SIG--Long-CXL-red.svg)](https://www.kernel.org/)
 
-#### 软件架构
-软件架构说明
+---
 
+**中文版** | **[🌐 English Version](README.en.md)**
 
-#### 安装教程
+---
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+OBMM (Ownership Based Memory Management) 是面向超节点环境的内核内存管理系统，支持跨节点的物理内存共享。该系统通过内核模块 (`obmm.ko`) 和用户态库 (`libobmm.so`) 提供高效的远程内存访问能力。
 
-#### 使用说明
+**重要背景**: 当前很多 sig-Long 总线技术（如 Unified Bus、CXL）中，跨节点数据一致性支持存在重大限制，导致多节点同时访问同一内存区域时可能出现数据竞争和不一致问题。OBMM 的**所有权机制**正是为了解决这一关键挑战而设计，通过确保任意时刻只有一个节点拥有内存的写入权限，从而在缺乏硬件一致性保证的环境中实现安全、可靠的跨节点内存共享。
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+## 🚀 核心特性
 
-#### 参与贡献
+- **所有权管理**: 基于所有权的内存访问控制，确保在缺乏硬件一致性保证的多节点环境中实现数据一致性
+- **跨节点内存共享**: 在单机内管理远端内存，支持内存导出 (export) 和导入 (import)
+- **透明访问**: 应用可使用普通的 `load`、`store` 指令访问远端内存
+- **NUMA 支持**: 将远端内存作为远程 NUMA 节点上线
+- **高性能**: 通过预导入 (preimport) 优化降低热路径时延
+- **设备接口**: 提供字符设备接口 (`/dev/obmm_shmdev{mem_id}`) 用于内存映射
 
-1.  Fork 本仓库
-2.  新建 Feat_xxx 分支
-3.  提交代码
-4.  新建 Pull Request
+## 🎯 主要应用场景
 
+### 场景一：单节点内存扩展
 
-#### 特技
+在单节点环境中扩展可用内存容量，突破本地物理内存限制。
 
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+**具体应用实例**：
+
+- **大内存数据库**: 数据库服务器需要处理超过本地物理内存容量的数据集，通过 OBMM 导入远程内存作为 NUMA 节点，透明扩展内存容量
+- **内存密集型计算**: 科学计算、机器学习训练等场景需要大量内存，通过 OBMM 动态扩展内存资源
+- **内存层次优化**: 将冷数据迁移到远程内存，热数据保留在本地内存，实现智能的内存分层管理
+- **容器内存扩展**: 为容器提供额外的内存资源，突破单机内存配额限制
+
+### 场景二：节点间共享内存
+
+在多节点环境中实现高效的内存数据共享和协作。
+
+**具体应用实例**：
+
+- **分布式缓存**: 多个应用节点共享同一份缓存数据，避免重复存储，提高缓存命中率
+- **实时数据共享**: 金融交易系统中，多个交易节点共享实时行情数据，确保数据一致性
+- **协同处理流水线**: 多个处理节点共享输入数据和中间结果，减少数据传输开销
+- **高可用性集群**: 主备节点共享状态数据，实现快速故障切换和状态同步
+
+## 🚀 未来应用可能性
+
+OBMM 的所有权机制和跨节点内存共享能力为未来更多创新应用场景提供了技术基础：
+
+### 边缘计算与云边协同
+- **边缘节点缓存**: 边缘设备共享缓存数据，减少云端访问延迟
+- **分布式推理**: AI 推理任务在边缘节点间共享模型和数据
+- **内容分发网络**: CDN 节点间共享热门内容，提高访问效率
+
+### 异构计算加速
+- **GPU/FPGA 内存共享**: CPU 与加速器间共享大容量内存池
+- **异构内存管理**: 统一管理不同类型的内存介质（DDR、HBM、持久内存）
+- **计算-存储融合**: 存储节点直接参与计算，减少数据搬移
+
+### 新型计算范式
+- **内存中心计算**: 以内存为中心的计算架构，突破传统 CPU 中心限制
+- **近数据计算**: 在数据存储位置附近执行计算，最小化数据移动
+- **分布式内存计算**: 将计算任务分布到内存所在的各个节点
+
+### 系统软件创新
+- **新型虚拟化**: 基于内存共享的轻量级虚拟化方案
+- **分布式操作系统**: 跨节点的统一内存视图和进程管理
+- **智能内存调度**: AI 驱动的智能内存分配和迁移策略
+
+> **技术愿景**: OBMM 不仅解决当前的一致性问题，更为未来的计算架构创新提供基础支撑。随着硬件技术的发展，OBMM 将持续演进，支持更丰富的应用场景和更高的性能要求。
+
+## 🤝 社区支持
+
+- 问题报告: [Gitee Issues](https://gitee.com/openeuler/obmm/issues)
+- 文档 Wiki: [项目 Wiki](https://gitee.com/openeuler/obmm/wikis)
+
+## 📄 许可证
+
+本项目采用 [GPL-2.0](LICENSE/GPL-2.0) 许可证。
+
+## 🔗 相关链接
+
+- [Linux 内核官网](https://www.kernel.org/)
+- [openEuler 操作系统](https://www.openeuler.org/)
+- [灵衢互连总线](https://unifiedbus.com/)
+- [openEuler 内核开发文档](https://gitee.com/openeuler/kernel/wikis/Home)
+
+---
+
+**注意**: 本项目需要相应的硬件平台支持。在部署前请确认您的环境满足所有依赖要求。
