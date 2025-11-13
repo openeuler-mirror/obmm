@@ -82,6 +82,14 @@ OBMM's ownership mechanism and cross-node memory sharing capabilities provide th
 ## 📄 License
 
 This project is licensed under the [GPL-2.0](LICENSE/GPL-2.0) License.
+## 🏷️ Project Timeline
+
+|Date	| Event	| Milestone |
+|-------|-------|-----------|
+| 2025.09.18 | Huawei Connect 2025 | UB Protocol Released |
+| 2025.11.14 | openEuler Summit 2025 | OBMM Technical Session Held |
+| 2025.11.18 | Opened Source on Gitee | First Community Pull Request Submitted |
+| 2025.12.30 | openEuler 24.03 SP3 Released | Integrated as a Core Component |
 
 ## 🔗 Related Links
 
