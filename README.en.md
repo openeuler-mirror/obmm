@@ -81,7 +81,9 @@ OBMM's ownership mechanism and cross-node memory sharing capabilities provide th
 
 ## 📄 License
 
-This project is licensed under the [GPL-2.0](LICENSE/GPL-2.0) License.
+The kernl module obmm is licensed under the [GPL-2.0](LICENSE/GPL-2.0) License.
+
+The userspace libobmm is licensed under the [MulanPSL2](LICENSE/MulanPSL2) License.
 ## 🏷️ Project Timeline
 
 |Date	| Event	| Milestone |

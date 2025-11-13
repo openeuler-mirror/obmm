@@ -81,7 +81,9 @@ OBMM 的所有权机制和跨节点内存共享能力为未来更多创新应用
 
 ## 📄 许可证
 
-本项目采用 [GPL-2.0](LICENSE/GPL-2.0) 许可证。
+本项目内核态驱动OBMM采用 [GPL-2.0](LICENSE/GPL-2.0) 许可证。
+
+本项目用户态库Libobmm采用 [Mulan-PSL-v2](LICENSE/Mulan-PSL-v2) 许可证。
 
 ## 🏷️ 开源
 | 时间 | 事件 | 里程碑 | 
