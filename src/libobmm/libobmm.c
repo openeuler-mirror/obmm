@@ -52,7 +52,7 @@ static int obmm_dev_get_fd(void)
     return obmm_dev_fd;
 }
 
-int obmm_query_memid_by_pa(unsigned long pa, mem_id *id, unsigned long *offset)
+__attribute__((visibility("default"))) int obmm_query_memid_by_pa(unsigned long pa, mem_id *id, unsigned long *offset)
 {
     struct obmm_cmd_addr_query cmd_addr_query;
     int fd, ret;
@@ -75,7 +75,7 @@ int obmm_query_memid_by_pa(unsigned long pa, mem_id *id, unsigned long *offset)
     return 0;
 }
 
-int obmm_query_pa_by_memid(mem_id id, unsigned long offset, unsigned long *pa)
+__attribute__((visibility("default"))) int obmm_query_pa_by_memid(mem_id id, unsigned long offset, unsigned long *pa)
 {
     struct obmm_cmd_addr_query cmd_addr_query;
     int fd, ret;
@@ -96,7 +96,7 @@ int obmm_query_pa_by_memid(mem_id id, unsigned long offset, unsigned long *pa)
     return 0;
 }
 
-mem_id obmm_export_useraddr(int pid, void* va, size_t length,
+__attribute__((visibility("default"))) mem_id obmm_export_useraddr(int pid, void* va, size_t length,
                 unsigned long flags, struct obmm_mem_desc *desc)
 {
     struct obmm_cmd_export_pid cmd_export_pid = {0};
@@ -139,7 +139,7 @@ mem_id obmm_export_useraddr(int pid, void* va, size_t length,
     return cmd_export_pid.mem_id;
 }
 
-mem_id obmm_export(const size_t length[OBMM_MAX_LOCAL_NUMA_NODES],
+__attribute__((visibility("default"))) mem_id obmm_export(const size_t length[OBMM_MAX_LOCAL_NUMA_NODES],
            unsigned long flags, struct obmm_mem_desc *desc)
 {
     struct obmm_cmd_export cmd_export;
@@ -207,7 +207,7 @@ static void fill_import_cmd_info(const struct obmm_mem_desc *desc,
     memcpy(cmd_import->seid, desc->seid, sizeof(cmd_import->seid));
 }
 
-mem_id obmm_import(const struct obmm_mem_desc *desc, unsigned long flags,
+__attribute__((visibility("default"))) mem_id obmm_import(const struct obmm_mem_desc *desc, unsigned long flags,
            int base_dist, int *numa)
 {
     struct obmm_cmd_import cmd_import;
@@ -256,7 +256,7 @@ mem_id obmm_import(const struct obmm_mem_desc *desc, unsigned long flags,
     return memid;
 }
 
-int obmm_unexport(mem_id id, unsigned long flags)
+__attribute__((visibility("default"))) int obmm_unexport(mem_id id, unsigned long flags)
 {
     struct obmm_cmd_unexport cmd_unexport;
     int fd;
@@ -276,7 +276,7 @@ int obmm_unexport(mem_id id, unsigned long flags)
     return ioctl(fd, OBMM_CMD_UNEXPORT, &cmd_unexport);
 }
 
-int obmm_unimport(mem_id id, unsigned long flags)
+__attribute__((visibility("default"))) int obmm_unimport(mem_id id, unsigned long flags)
 {
     struct obmm_cmd_unimport cmd_unimport;
     int fd;
@@ -296,7 +296,7 @@ int obmm_unimport(mem_id id, unsigned long flags)
     return ioctl(fd, OBMM_CMD_UNIMPORT, &cmd_unimport);
 }
 
-int obmm_set_ownership(int fd, void *start, void *end, int prot)
+__attribute__((visibility("default"))) int obmm_set_ownership(int fd, void *start, void *end, int prot)
 {
     uint64_t mem_attr;
     struct obmm_cmd_update_range update_info;
@@ -320,7 +320,8 @@ int obmm_set_ownership(int fd, void *start, void *end, int prot)
     return ioctl(fd, OBMM_SHMDEV_UPDATE_RANGE, &update_info);
 }
 
-int obmm_preimport(struct obmm_preimport_info *preimport_info, unsigned long flags)
+__attribute__((visibility("default"))) int obmm_preimport(struct obmm_preimport_info *preimport_info,
+    unsigned long flags)
 {
     struct obmm_cmd_preimport cmd;
     int ret, fd, errsv;
@@ -366,7 +367,8 @@ int obmm_preimport(struct obmm_preimport_info *preimport_info, unsigned long fla
     return 0;
 }
 
-int obmm_unpreimport(const struct obmm_preimport_info *preimport_info, unsigned long flags)
+__attribute__((visibility("default"))) int obmm_unpreimport(const struct obmm_preimport_info *preimport_info,
+    unsigned long flags)
 {
     struct obmm_cmd_preimport cmd;
     int fd;
