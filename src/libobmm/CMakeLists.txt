@@ -1,3 +1,6 @@
+cmake_minimum_required(VERSION 3.10)
+
+project(OBMM_SO C)
 
 aux_source_directory(${CMAKE_CURRENT_LIST_DIR} LIBOBMM_DIR_SRCS)
 add_library(OBMM_SO SHARED ${LIBOBMM_DIR_SRCS})
