@@ -2,7 +2,7 @@
 
 OBMM 是在单机内管理远端内存的基础组件，可以将本地内存导出（export），将其他系统导出的内存引入（import）。export、import 两方的 OBMM 组件依次完成数据通路配置后，import 侧的应用可以像使用本端内存一样，使用 `load` 、`store` 访问远端内存。
 
-OBMM 组件包含用户态库 libobmm.so 和内核模块 obmm.ko（详见obmm(4)）。本文档包含 libomm 的功能总览，并介绍其中的关键数据结构。libobmm 的每个函数有专有的文档展开描述。
+OBMM 组件包含用户态库 libobmm.so 和内核模块 obmm.ko（详见obmm(4)）。本文档包含 libobmm 的功能总览，并介绍其中的关键数据结构。libobmm 的每个函数有专有的文档展开描述。
 
 ## OBMM API 总览
 
@@ -55,7 +55,7 @@ OBMM 使用64位整数编码内存每段 OBMM 内存，其中 `OBMM_INVALID_MEMI
 struct obmm_mem_desc {
 	uint64_t addr;
 	uint64_t length;
-	/* 128bit eid, ordered by small-endian */
+	/* 128bit eid, ordered by little-endian */
 	uint8_t seid[16];
 	uint8_t deid[16];
 	uint32_t tokenid;
