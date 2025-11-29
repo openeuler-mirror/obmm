@@ -18,7 +18,7 @@
 | --------------------- | ------------------------------------------------------------ |
 | libobmm.md            | libobmm 接口总览、核心数据结构说明、使用模型说明、粒度说明   |
 | obmm_export.md        | `obmm_export()`接口说明                                      |
-| obmm_export.md        | `obmm_unexport()` 接口说明                                   |
+| obmm_unexport.md      | `obmm_unexport()` 接口说明                                   |
 | obmm_import.md        | `obmm_import()` 接口说明                                     |
 | obmm_unimport.md      | `obmm_unimport()` 接口说明                                   |
 | obmm_preimport.md     | `obmm_preimport()` 接口说明                                  |

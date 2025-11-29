@@ -78,7 +78,7 @@ struct obmm_mem_desc {
 length需要满足如下要求：
 1. length必须按OBMM基础粒度对齐，同时满足内存分配器与UMMU的粒度约束。
 
-**falgs**: 导出内存的属性，当前仅支持0。
+**flags**: 导出内存的属性，当前仅支持0。
 
 **desc**: 指向一个OBMM的内存描述符，用于传入内存的属性参数，同时接收地址信息。其中priv_len、priv域段为入参，addr，length，tokenid域段为出参，其他参数会被忽略。
 
@@ -116,7 +116,7 @@ struct obmm_mem_desc {
   * flags 允许值有：`OBMM_EXPORT_FLAG_FAST` 和 `OBMM_EXPORT_FLAG_ALLOW_MMAP`。
 * `ENODEV`: 只允许从已上线的本地NUMA节点分配内存。
 * `ENOMEM`：系统内存不足。
-* `EEXIST：`申请`region` 已存在。
+* `EEXIST:` 申请`region` 已存在。
 * `E2BIG`：请求的 NUMA 数量大于系统支持最大值。
 * `ENOSPC`：指定范围内无可用 `memid`。
 * `EOVERFLOW`：内存溢出，请求的内存总大小超出`unsigned long`的范围。
@@ -153,7 +153,7 @@ int export_interface_demo(void)
 	struct obmm_mem_desc desc = {
 		.priv_len = 0
 	};
-	memcpy(desc->deid, &device_deid, 4);
+	memcpy(desc.deid, &device_deid, 4);
 	/* Export memory from OBMM. */
 	id = obmm_export(length, flags, &desc);
 	if (id == OBMM_INVALID_MEMID) {
@@ -189,7 +189,7 @@ int export_useraddr_interface_demo(void)
 	struct obmm_mem_desc desc = {
 		.priv_len = 0
 	};
-	memcpy(desc->deid, &device_deid, 4);
+	memcpy(desc.deid, &device_deid, 4);
 	/* Export memory from OBMM. */
 	id = obmm_export_useraddr(length, flags, &desc);
 	if (id == OBMM_INVALID_MEMID) {

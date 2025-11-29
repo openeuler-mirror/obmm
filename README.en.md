@@ -74,6 +74,31 @@ OBMM's ownership mechanism and cross-node memory sharing capabilities provide th
 
 > **Technical Vision**: OBMM not only solves current consistency issues but also provides foundational support for future computing architecture innovations. As hardware technology develops, OBMM will continue to evolve, supporting richer application scenarios and higher performance requirements.
 
+## 📚 Documentation
+
+### API Documentation
+- **[Userspace Library Overview](doc/libobmm.md)** - libobmm interface overview, core data structures, usage models
+- **[Memory Export](doc/obmm_export.md)** - `obmm_export()` interface documentation
+- **[Memory Unexport](doc/obmm_unexport.md)** - `obmm_unexport()` interface documentation
+- **[Memory Import](doc/obmm_import.md)** - `obmm_import()` interface documentation
+- **[Memory Unimport](doc/obmm_unimport.md)** - `obmm_unimport()` interface documentation
+- **[Memory Preimport](doc/obmm_preimport.md)** - `obmm_preimport()` interface documentation
+- **[Memory Unpreimport](doc/obmm_unpreimport.md)** - `obmm_unpreimport()` interface documentation
+- **[Ownership Setting](doc/obmm_set_ownership.md)** - `obmm_set_ownership()` interface documentation
+- **[Memory Query](doc/obmm_query.md)** - `obmm_query_memid_by_pa()`, `obmm_query_pa_by_memid()` interface documentation
+
+### Device Documentation
+- **[OBMM Kernel Module](doc/obmm.md)** - obmm.ko parameter description and /dev/obmm device documentation
+- **[Shared Memory Device](doc/obmm_shmdev.md)** - obmm_shmdev\${mem_id} device usage documentation
+
+### System Interface Documentation
+- **[Shared Memory Device Sysfs](doc/obmm_shmdev_sysfs.md)** - /sys/devices/obmm/obmm_shmdev\${mem_id}/ monitoring directory content description
+- **[Preimport Sysfs](doc/obmm_preimport_sysfs.md)** - /proc/obmm/preimport_info monitoring file format description
+
+### Other Documentation
+- **[Documentation Directory](doc/README.md)** - Documentation organization structure description
+- **[Release Notes](doc/RELEASE-NOTES.md)** - Version release information
+
 ## 🤝 Community Support
 
 - Issue Reporting: [Gitee Issues](https://gitee.com/openeuler/obmm/issues)
@@ -81,9 +106,9 @@ OBMM's ownership mechanism and cross-node memory sharing capabilities provide th
 
 ## 📄 License
 
-The kernl module obmm is licensed under the [GPL-2.0](LICENSE/GPL-2.0) License.
+The kernel module obmm is licensed under the [GPL-2.0](LICENSE/GPL-2.0) License.
 
-The userspace libobmm is licensed under the [MulanPSL2](LICENSE/MulanPSL2) License.
+The userspace libobmm is licensed under the [Mulan-PSL-v2](LICENSE/Mulan-PSL-v2) License.
 ## 🏷️ Project Timeline
 
 |Date	| Event	| Milestone |
@@ -102,4 +127,4 @@ The userspace libobmm is licensed under the [MulanPSL2](LICENSE/MulanPSL2) Licen
 
 ---
 
-**Note**: This project requires corresponding hardware platform support. Please ensure your environment meets all dependency requirements before deployment.
+**Note**: This project requires corresponding hardware platform support and kernel modifications (related code has been submitted to [openEuler Kernel PR #19100](https://gitee.com/openeuler/kernel/pulls/19100)). Please ensure your environment meets all dependency requirements before deployment.

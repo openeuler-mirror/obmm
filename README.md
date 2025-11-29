@@ -74,6 +74,31 @@ OBMM 的所有权机制和跨节点内存共享能力为未来更多创新应用
 
 > **技术愿景**: OBMM 不仅解决当前的一致性问题，更为未来的计算架构创新提供基础支撑。随着硬件技术的发展，OBMM 将持续演进，支持更丰富的应用场景和更高的性能要求。
 
+## 📚 文档
+
+### API 文档
+- **[用户态库总览](doc/libobmm.md)** - libobmm 接口总览、核心数据结构说明、使用模型说明
+- **[内存导出](doc/obmm_export.md)** - `obmm_export()` 接口说明
+- **[内存取消导出](doc/obmm_unexport.md)** - `obmm_unexport()` 接口说明
+- **[内存导入](doc/obmm_import.md)** - `obmm_import()` 接口说明
+- **[内存取消导入](doc/obmm_unimport.md)** - `obmm_unimport()` 接口说明
+- **[内存预导入](doc/obmm_preimport.md)** - `obmm_preimport()` 接口说明
+- **[取消预导入](doc/obmm_unpreimport.md)** - `obmm_unpreimport()` 接口说明
+- **[所有权设置](doc/obmm_set_ownership.md)** - `obmm_set_ownership()` 接口说明
+- **[内存查询](doc/obmm_query.md)** - `obmm_query_memid_by_pa()`, `obmm_query_pa_by_memid()` 接口说明
+
+### 设备文档
+- **[OBMM 内核模块](doc/obmm.md)** - obmm.ko 参数说明与 /dev/obmm 设备说明
+- **[共享内存设备](doc/obmm_shmdev.md)** - obmm_shmdev\${mem_id} 设备使用说明
+
+### 系统接口文档
+- **[共享内存设备 Sysfs](doc/obmm_shmdev_sysfs.md)** - /sys/devices/obmm/obmm_shmdev\${mem_id}/ 维测目录内容说明
+- **[预导入 Sysfs](doc/obmm_preimport_sysfs.md)** - /proc/obmm/preimport_info 维测文件格式说明
+
+### 其他文档
+- **[文档目录说明](doc/README.md)** - 文档组织结构说明
+- **[发布说明](doc/RELEASE-NOTES.md)** - 版本发布信息
+
 ## 🤝 社区支持
 
 - 问题报告: [Gitee Issues](https://gitee.com/openeuler/obmm/issues)
@@ -102,4 +127,4 @@ OBMM 的所有权机制和跨节点内存共享能力为未来更多创新应用
 
 ---
 
-**注意**: 本项目需要相应的硬件平台支持。在部署前请确认您的环境满足所有依赖要求。
+**注意**: 本项目需要相应的硬件平台支持和内核态修改支持（相关代码已提交至 [openEuler Kernel PR #19100](https://gitee.com/openeuler/kernel/pulls/19100)）。在部署前请确认您的环境满足所有依赖要求。
