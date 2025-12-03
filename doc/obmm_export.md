@@ -1,4 +1,4 @@
-# obmm_export: 导出本地内存
+﻿# obmm_export: 导出本地内存
 
 ## 名称 NAME
 
@@ -42,7 +42,7 @@ length需要满足如下要求：
 *OBMM_EXPORT_FLAG_FAST*：仅从内存缓冲池中申请内存进行export操作。若内存缓冲池内存不足，不会向系统申请内存，直接返回错误。
 *OBMM_EXPORT_FLAG_ALLOW_MMAP*: 允许通过mmap对应memid的字符设备的方式，使用该内存。
 
-**desc**: 指向一个OBMM内存描述符，用于传入内存的属性参数，同时接收地址信息。其中priv_len、priv域段为入参，addr，length，tokenid域段为出参，其他参数会被忽略。
+**desc**: 指向一个OBMM内存描述符，用于传入内存的属性参数，同时接收地址信息。其中deid、priv_len、priv域段为入参，addr，length，tokenid域段为出参，其他参数会被忽略。
 
 ```c
 struct obmm_mem_desc {
@@ -80,7 +80,7 @@ length需要满足如下要求：
 
 **flags**: 导出内存的属性，当前仅支持0。
 
-**desc**: 指向一个OBMM的内存描述符，用于传入内存的属性参数，同时接收地址信息。其中priv_len、priv域段为入参，addr，length，tokenid域段为出参，其他参数会被忽略。
+**desc**: 指向一个OBMM的内存描述符，用于传入内存的属性参数，同时接收地址信息。其中deid、priv_len、priv域段为入参，addr，length，tokenid域段为出参，其他参数会被忽略。
 
 ```c
 struct obmm_mem_desc {
