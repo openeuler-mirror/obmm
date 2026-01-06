@@ -8,10 +8,6 @@
 2. 设备文档，对应 UNIX man pages section 4
 3. sysfs文档，对应 UNIX man pages section 5
 
-非标准的杂项文档请移步 OBMM wiki。
-
-
-
 用户态库接口文档
 
 | 文档                  | 内容                                                         |
@@ -27,7 +23,6 @@
 | obmm_query.md         | `obmm_query_memid_by_pa()`, `obmm_query_pa_by_memid()` 接口说明 |
 
 
-
 设备文档
 
 | 文档           | 内容                                  |
@@ -36,14 +31,11 @@
 | obmm_shmdev.md | obmm_shmdev\${mem_id} 设备使用说明    |
 
 
-
 sysfs 文档
 
 | 文档                    | 内容                                                      |
 | ----------------------- | --------------------------------------------------------- |
 | obmm_shmdev_sysfs.md    | /sys/devices/obmm/obmm_shmdev\${mem_id}/ 维测目录内容说明 |
 | obmm_preimport_sysfs.md | /proc/obmm/preimport_info 维测文件格式说明                |
-
-
 
 目前各文档已初步成型。errno、编程 demo 持续补充中。

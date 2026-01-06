@@ -57,6 +57,21 @@ OBMM支持部分映射，同一进程mmap和munmap的范围必须保持一致，
 
 当 obmm_shmdev 设备被打开或 mmap 时，内存设备均无法销毁。销毁内存设备时，用户应先解除映射，关闭文件描述符。
 
+#### PMD映射
+obmm_shmdev字符设备mmap提供PMD映射方式，通过增加映射粒度来降低Page Table Walk耗时，降低TLB Miss率，从而降低平均访存时延。
+
+##### 使用方式
+`#define OBMM_MMAP_FLAG_HUGETLB_PMD (1UL << 63)`
+在mmap时，通过指定偏移为(`OBMM_MAP_FLAG_HUGETLB_PMD` | offset)实现指定PMD映射的效果。
+
+mmap其余参数描述有所变化：
+* addr：置为 NULL时由内核申请PMD_SIZE对齐的虚拟地址，不为NULL时则以用户传入值为引导值，内核自动调整到PMD_SIZE对齐。
+* length：映射内存的长度，此参数必须按PMD_SIZE大小对齐。
+
+##### 使用约束
+1. 一个obmm_shmdev不允许混合不同粒度映射。设备首次映射时会记录映射粒度。
+2. 通过PMD方式映射的虚拟地址不支持使用`obmm_set_ownership`接口维护一致性。
+
 ## 样例
 
 以下函数展示了应用通过 POSIX 标准接口访问 OBMM 内存设备的过程。函数使用 open(2), mmap(2) 映射内存设备。使用 cacheable 内存时，需要使用 obmm_set_ownership(3) 接口维护 libobmm(3) 中描述的一致性模型。访问结束后，函数使用 munmap(2) 和 close(2) 解除了对设备的映射和占用。
@@ -112,6 +127,63 @@ int memdev_demo(mem_id id, size_t size)
 		exit(EXIT_FAILURE);
 	}
 
+	/* Cleanup.*/
+	ret = munmap(ptr, size);
+	if (ret == -1) {
+		perror("munmap() failed on OBMM memdev pointer.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = close(fd);
+	if (ret == -1) {
+		perror("close() failed on OBMM memdev.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	return 0;
+}
+```
+
+以下函数展示了应用通过 POSIX 标准接口访问 OBMM 内存设备的过程。函数使用 open(2), mmap(2) 以PMD方式映射non_cachable属性内存设备，访问结束后，函数使用 munmap(2) 和 close(2) 解除了对设备的映射和占用。
+
+```c
+#include <stdio.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <libobmm.h>
+
+#define SZ_2M	(1UL << 21)
+
+#define MAX_OBMM_MEMDEV_PATH	128
+int memdev_demo(mem_id id, size_t size)
+{
+	int ret, fd, *value;
+	void *ptr;
+	char memdev_path[128];
+
+	ret = snprintf(memdev_path, sizeof(memdev_path), "/dev/obmm_shmdev%lu", id);
+	if (ret < 0 || ret >= (int)sizeof(memdev_path)) {
+		fprintf(stderr, "Failed to construct OBMM memdev path.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	fd = open(memdev_path, O_RDWR|O_SYNC);
+	if (fd == -1) {
+		perror("open() failed on OBMM memdev.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	/* Map the memory device with NONE access right. */
+	ptr = mmap(NULL, size, PROT_NONE, MAP_SHARED, fd, OBMM_MMAP_FLAG_HUGETLB_PMD);
+	if (ptr == MAP_FAILED) {
+		perror("mmap() failed on OBMM memdev.\n");
+		exit(EXIT_FAILURE);
+	}
+	/* Map char device succeeded. */
+	value = (int*)ptr;
+	*value = *value + 1;
 	/* Cleanup.*/
 	ret = munmap(ptr, size);
 	if (ret == -1) {
