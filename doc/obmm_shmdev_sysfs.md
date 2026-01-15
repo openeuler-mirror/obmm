@@ -98,9 +98,13 @@ obmm_shmdev${id}/
 
 **import_info/dcna**
 类型：文本、十六进制数
-描述：内存使用方 bus controller 的 clan network address，含义详见 UB 协议。
+描述：内存提供方 bus controller 的 clan network address，含义详见 UB 协议。
 
 **import_info/seid**
+类型：文本、十六进制数, 以u64 : u64 格式打印
+描述：内存使用方 bus controller 的 entity id，含义详见 UB 协议。
+
+**import_info/deid**
 类型：文本、十六进制数, 以u64 : u64 格式打印
 描述：内存提供方 bus controller 的 entity id，含义详见 UB 协议。
 
@@ -114,14 +118,15 @@ obmm_shmdev${id}/
 
 使用方信息是否适用受 OBMM 工作模式、import flags 配置等多方面的影响。下表为其总览表：
 
-| 属性      | 适用场景                  |
-| --------- | ------------------------- |
+| 属性      | 适用场景                   |
+| --------- | ------------------------ |
 | pa        | 所有场景                  |
 | scna      | 所有场景                  |
-| deid      | 仅记录                    |
-| seid      | 仅记录                    |
-| numa_id   | 内存以 NUMA 方式引入      |
-| preimport | 内存以 NUMA 方式引入      |
+| dcna      | 所有场景，仅记录，不参与通路配置      |
+| seid      | 所有场景                  |
+| deid      | 所有场景，仅记录，不参与通路配置      |
+| numa_id   | 内存以 NUMA 方式引入       |
+| preimport | 内存以 NUMA 方式引入       |
 
 # 常见问题
 

@@ -19,9 +19,6 @@ int obmm_unimport(mem_id id, unsigned long flags);
 
 内存使用方根据内存编号释放引入内存。
 
-当以 cacheable 方式引入的内存被 unimport 时，所有有关的缓存都会被 invalidate ，不会被 writeback 。
-如果需要确保数据变更不丢失，unimport 前需手动调用 obmm_set_ownership(3) 触发回写。
-
 ### Input Parameters
 
 **id**：要回收的内存的编号

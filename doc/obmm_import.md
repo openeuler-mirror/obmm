@@ -39,13 +39,13 @@ mem_id obmm_import(const struct obmm_mem_desc *desc, unsigned long flags, int ba
 
 | 字段      | 描述 |
 | --------- | --------------------------------------------- |
-| addr      | 远端内存对应的物理地址（由预填decoder者提供） |
+| addr      | 远端内存对应的物理地址（由配置ubmem decoder的组件提供）     |
 | length    | import的内存大小                              |
 | tokenid   | 忽略                                          |
-| deid      | 忽略                                          |
+| deid      | 提供方提供内存的UB controller的EID，当前仅用于记账 |
 | seid      | 使用方引入内存的UB controller的EID             |
-| scna      | 使用方引入内存的UB controller的CNA地址        |
-| dcna      | 忽略                                          |
+| scna      | 使用方引入内存的UB controller的CNA地址          |
+| dcna      | 提供方提供内存的UB controller的EID，当前仅用于记账  |
 | priv_len  | 私有数据长度                                  |
 | priv      | 私有数据，仅呈现在sysfs中，不影响通路         |
 
@@ -68,9 +68,13 @@ mem_id obmm_import(const struct obmm_mem_desc *desc, unsigned long flags, int ba
 
 **base_dist**：引入内存上线作为远端 NUMA 节点上线的基础距离。即该远端NUMA节点（n_r）到引入物理芯片所在本地 NUMA （基准NUMA，n_b）的距离。
 
-* `base_dist`等于0时，新节点到其他本地节点的距离定义为100，新节点到其他远端节点的距离为254。
-* `base_dist`不等于0且小于等于10，或`base_dist`大于254时，接口报非法参数错误。
-* `base_dist`大于11且小于等于254时，新节点到其他远端节点的距离为254，新节点到其他本地的本地节点的距离为： dist(n, n_b) + dist(n_b, n_r) - dist(n_b, n_b)。如果该值大于 254，则定义距离为254。
+* `base_dist`等于0时，新节点到其他本地节点的距离定义为100，新节点到其他远端节点的距离为255。
+* `base_dist`不等于0且小于等于10，或`base_dist`大于255时，接口报非法参数错误。
+* `base_dist`大于11且小于等于255时，新节点到其他远端节点的距离为255，新节点到其他本地的本地节点的距离为： dist(n, n_b) + dist(n_b, n_r) - dist(n_b, n_b)。如果该值大于 255，则定义距离为255。
+
+OBMM引入内存并上线remote NUMA时，如果为直接上线，NUMA distance会根据最后一次上线重新计算并覆写前值。建议应用始终传入相同的base distance以保持NUMA distance稳定。
+
+remote NUMA并不限制从特定CPU package或特定UB die引入，当一个remote包含从多个UB die引入的内存时，它到各个本地NUMA节点间的亲和性难以定义，应用可以传入base distance=0，使remote NUMA和各本地NUMA节点保持等距。
 
 未指定*OBMM_IMPORT_FLAG_NUMA_REMOTE*时，或指定*OBMM_IMPORT_FLAG_PREIMPORT*时，base_dist参数将被忽略。
 
@@ -112,7 +116,7 @@ mem_id obmm_import(const struct obmm_mem_desc *desc, unsigned long flags, int ba
   * priv_len 的长度超出 `OBMM_MAX_PRIV_LEN`；
   * 申请内存大小不能为零；
   * flags 含有无效标志位；参数 `ALLOW_MMAP`和 `NUMA_REMOTE` 必须且只能指定一个;在指定 `OBMM_IMPORT_FLAG_PREIMPORT` 时，必须指定 `OBMM_IMPORT_FLAG_NUMA_REMOTE`；
-  * `base_dist` 不等于0且小于等于10，或大于254；
+  * `base_dist` 不等于0且小于等于10，或大于255；
   * 传入的地址和内存长度没有按照OBMM基础粒度对齐；pa 为 0 或 pa + size 溢出；
   * preimport 模式引入的内存，物理地址没有落在节点预留内存中；
   * 导入的 scna、seid、dcna、deid 和预引入时使用 scna、seid、dcna、deid 不匹配。
@@ -139,7 +143,7 @@ mem_id obmm_import(const struct obmm_mem_desc *desc, unsigned long flags, int ba
 #include <stdlib.h>
 #include <libobmm.h>
 
-int import_demo_decoder(unsigned long pa, size_t size, unsigned int scna, uint8_t *seid)
+int import_demo(unsigned long pa, size_t size, unsigned int scna, uint8_t *seid)
 {
 	int ret;
 	mem_id id;

@@ -30,7 +30,7 @@ int obmm_query_pa_by_memid(memid id, unsigned long offset, unsigned long *pa);
   * 在 export 方，PA一般不连续，二者无明确对应关系
   * 在 import 方，当前版本的硬件上，PA和UBA有线性对应关系，PA offset = UBA offset
 * VA offset 和 UBA offset
-  * 如果 VA 是通过OBMM设备mmap的（对应legacy接口的共享模式），VA和UBA有线性对应关系，VA offset = UBA offset
+  * 如果 VA 是通过OBMM设备mmap的，VA和UBA有线性对应关系，VA offset = UBA offset
   * 如果 VA 是由 NUMA 管理的，VA和UBA无明确对应关系
 
 ## 返回值 RETURN VALUE
@@ -43,7 +43,7 @@ int obmm_query_pa_by_memid(memid id, unsigned long offset, unsigned long *pa);
 
 故障码对应的部分情形如下：
 
-* `ENOENT`：ID为`memid`的OBMM内存不存在（原海思 auto-align 接口中，还包括“使用方 pa 没有对应的远端内存”这种情况）。
+* `ENOENT`：ID为`memid`的OBMM内存不存在。
 * `EINVAL`：`memid`对应的OBMM内存存在，但是`offset` 越界。
 
 ## 约束 CONSTRAINTS

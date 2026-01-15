@@ -56,7 +56,7 @@ int obmm_unpreimport(const struct obmm_preimport_info *preimport_info, unsigned 
 故障码对应的部分情形如下：
 
 * `ENOENT`：要移除的远程内存块不存在或已被释放。
-* `EINVAL`：传入的 preimport_info 为空；无效的CNA对; flags 包含未定义位；物理地址 pa 对应非预导入区域；卸载区段起始地址和长度未精准匹配。
+* `EINVAL`：传入的 preimport_info 为空；flags 包含未定义位；物理地址 pa 对应非预导入区域；卸载区段起始地址和长度未精准匹配。
 * `EAGAIN`: 预导入过程未完成，稍后再试。
 * `EBUSY` : 待卸载区域正在使用，被其他进程占用。
 * `EFAULT`: 未找到物理地址对应信息。
