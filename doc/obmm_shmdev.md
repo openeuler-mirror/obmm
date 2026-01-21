@@ -24,7 +24,7 @@ int open(const char *pathname, int flags, ...
 在操作 obmm_shmdev 时，flags 可以影响 shmdev 的下列行为：
 
 * 操作权限：O_RDONLY 代表请求只读权限，O_WRONLY 代表请求只写权限（当前无法基于此flag做映射），O_RDWR 代表请求读写权限，三者配置仅配置一项。
-* 同步模式：在 flags 中对 O_SYNC 置位时，使用类似同步IO的语义，远端内存将被以 non-cacheable 当时映射；O_SYNC 未置位时，远端内存将被 cacheable 方式映射。如果芯片对物理地址段的映射模式有限制，O_SYNC 的配置应与之匹配。
+* 同步模式：在 flags 中对 O_SYNC 置位时，使用类似同步IO的语义，远端内存将被以 non-cacheable 方式映射；O_SYNC 未置位时，远端内存将被 cacheable 方式映射。如果芯片对物理地址段的映射模式有限制，O_SYNC 的配置应与之匹配。
 
 ### mmap
 
@@ -52,7 +52,7 @@ OBMM支持部分映射，同一进程mmap和munmap的范围必须保持一致，
 映射时，应用还需要满足以下限制：
 
 * obmm_shmdev 对应的内存具备 allow_mmap 属性：allow_mmap 属性由创建 OBMM 内存设备的 flags（ *OBMM_EXPORT_FLAG_ALLOW_MMAP* 或 *OBMM_IMPORT_FLAG_ALLOW_MMAP*） 配置。
-* 对每一个 cachebale 映射的页，obmm同时允许最多2^16-1个写权限访问者，2^16-1个读权限访问者进行映射以及任意数量的空权限映射；没有 ownership 概念的 non-cacheable 页不受前述限制。
+* 对每一个 cacheable 映射的页，obmm同时允许最多2^16-1个写权限访问者，2^16-1个读权限访问者进行映射以及任意数量的空权限映射；没有 ownership 概念的 non-cacheable 页不受前述限制。
 * 进程实际的映射数上限还受内核文件描述符上限、进程映射数量上限等配置的制约，不仅由 OBMM 的状态上限决定。
 
 当 obmm_shmdev 设备被打开或 mmap 时，内存设备均无法销毁。销毁内存设备时，用户应先解除映射，关闭文件描述符。

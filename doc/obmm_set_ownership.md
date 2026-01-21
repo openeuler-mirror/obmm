@@ -19,13 +19,13 @@ int obmm_set_ownership(int fd, void *start, void *end, int prot);
 
 变更进程对 OBMM 内存的权限，仅对通过字符设备映射的 cacheable 内存有效，即fd 创建时未指定 O_SYNC 的内存。
 
-在 OBMM cacheable 模型中，当本机有至少一个进程以可写方式映射时，本机即具备 host 级的写权限，其他 host 上不应有任何可读或可写的 cachebale 映射。
+在 OBMM cacheable 模型中，当本机有至少一个进程以可写方式映射时，本机即具备 host 级的写权限，其他 host 上不应有任何可读或可写的 cacheable 映射。
 
-当本机没有进程以可写方式映射，但存在至少一个进程以只读方式映射时，本机即具备 host 机 的读权限，其他 host 上不应有任何可写的 cachebale 映射。
+当本机没有进程以可写方式映射，但存在至少一个进程以只读方式映射时，本机即具备 host 机 的读权限，其他 host 上不应有任何可写的 cacheable 映射。
 
 请注意：
 
-* 如果 fd 在创建时指定了 O_SYNC flag，其对应的NC映射不能使用`obmm_set_owenership`。
+* 如果 fd 在创建时指定了 O_SYNC flag，其对应的NC映射不能使用`obmm_set_ownership`。
 * 如果同一个页面被多个进程以可写方式映射，OBMM 仅保证在最后一个具备写权限的进程释放写权限时（转入读、空权限或者解除映射）发起硬件层面的缓存写回。
 * 如果同一个页面被多个进程以只读或读写权限映射，OBMM 仅保证在最后一个具备访问权限的进程释放权限（转入空权限或者解除映射）时会发起硬件的缓存无效化。
 * obmm_set_ownership 不是缓存回刷的唯一触发因素，在系统运行中，缓存被持续使用，硬件会自发地进行缓存逐出，dirty cache 被写入远端内存的时间并不固定。
