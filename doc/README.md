@@ -13,6 +13,7 @@
 | 文档                  | 内容                                                         |
 | --------------------- | ------------------------------------------------------------ |
 | libobmm.md            | libobmm 接口总览、核心数据结构说明、使用模型说明、粒度说明   |
+| obmm_log.md           | OBMM日志系统使用说明，包括日志查看、配置和问题诊断          |
 | obmm_export.md        | `obmm_export()`接口说明                                      |
 | obmm_unexport.md      | `obmm_unexport()` 接口说明                                   |
 | obmm_import.md        | `obmm_import()` 接口说明                                     |
