@@ -25,6 +25,10 @@
 /* OBMM Logging configuration */
 #define OBMM_LOG_FACILITY LOG_LOCAL0
 
+/* Time conversion constants */
+#define NSEC_PER_MSEC  1000000  /* Nanoseconds per millisecond */
+#define MSEC_PER_SEC   1000     /* Milliseconds per second */
+
 /* Format 16-byte EID (deid/seid) directly - no buffer needed */
 #define EID_FMT64 "%#016llx:%#016llx"
 #define EID_ARGS64(eid) (unsigned long long)*(uint64_t *)&(eid)[8], (unsigned long long)*(uint64_t *)&(eid)[0]
@@ -34,8 +38,8 @@ static inline long obmm_elapsed_ms(const struct timespec *start)
 {
     struct timespec end;
     clock_gettime(CLOCK_REALTIME, &end);
-    return (end.tv_sec - start->tv_sec) * 1000 +
-           (end.tv_nsec - start->tv_nsec) / 1000000;
+    return (end.tv_sec - start->tv_sec) * MSEC_PER_SEC +
+           (end.tv_nsec - start->tv_nsec) / NSEC_PER_MSEC;
 }
 
 /* Convenience logging macros for different levels */

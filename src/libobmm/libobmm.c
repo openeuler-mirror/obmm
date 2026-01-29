@@ -15,25 +15,25 @@
  * Create: 2025-10-28
  */
 
-#include <fcntl.h>
+#include "libobmm.h"
+#include "libobmm_log.h"
+#include "vendor_adaptor.h"
+
 #include <errno.h>
-#include <stdio.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include <stdarg.h>
 #include <stdatomic.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <stdlib.h>
-#include <pthread.h>
-#include <unistd.h>
 #include <syslog.h>
 #include <time.h>
-#include <stdarg.h>
+#include <unistd.h>
 
 #include <ub/obmm.h>
-
-#include "vendor_adaptor.h"
-#include "libobmm.h"
-#include "libobmm_log.h"
 
 #define NUMA_NO_NODE (-1)
 #define OBMM_DEV_PATH "/dev/obmm"
@@ -43,8 +43,6 @@
  * Example: " [0]:0x100000000" = 19 bytes
  */
 #define SIZE_STR_BUFFER_SIZE (OBMM_MAX_LOCAL_NUMA_NODES * 32)
-/* Single node format buffer: " [node_id]:0x<address>" max 64 bytes */
-#define NODE_STR_BUFFER_SIZE 64
 
 static int obmm_dev_get_fd(void)
 {
@@ -181,9 +179,9 @@ __attribute__((visibility("default"))) mem_id obmm_export(const size_t length[OB
     size_str[0] = '\0';
     for (i = 0; i < OBMM_MAX_LOCAL_NUMA_NODES; i++) {
         if (length[i] > 0) {
-            char tmp[NODE_STR_BUFFER_SIZE];
-            snprintf(tmp, sizeof(tmp), " [%d]:%#lx", i, length[i]);
-            strcat(size_str, tmp);
+            size_t current_len = strlen(size_str);
+            snprintf(size_str + current_len, SIZE_STR_BUFFER_SIZE - current_len,
+                " [%d]:%#lx", i, length[i]);
         }
     }
     OBMM_LOG_START("len(sizes)=%d sizes={%s} flags=%#lx deid=" EID_FMT64 " priv_len=%u",
@@ -287,8 +285,8 @@ __attribute__((visibility("default"))) mem_id obmm_import(const struct obmm_mem_
         cmd_import.numa_id = NUMA_NO_NODE;
 
     /* Log start with full parameters */
-    OBMM_LOG_START("scna=%#x {pa=%#llx length=%#llx} flags=%#lx nid=%d base_dist=%d seid=" EID_FMT64 " priv_len=%u",
-                   desc->scna, (unsigned long long)desc->addr, (unsigned long long)desc->length,
+    OBMM_LOG_START("scna=%#x {pa=%#lx length=%#lx} flags=%#lx nid=%d base_dist=%d seid=" EID_FMT64 " priv_len=%u",
+                   desc->scna, desc->addr, desc->length,
                    flags, cmd_import.numa_id, base_dist, EID_ARGS64(desc->seid), desc->priv_len);
 
     ret = vendor_fixup_import_cmd(&cmd_import);
@@ -421,10 +419,10 @@ __attribute__((visibility("default"))) int obmm_preimport(struct obmm_preimport_
     }
 
     /* Log start with full parameters */
-    OBMM_LOG_START("scna=%#x dcna=%#x {pa=%#llx length=%#llx} flags=%#lx nid=%d base_dist=%d seid="
-                    EID_FMT64" deid=" EID_FMT64 "priv_len=%u",
-                   preimport_info->scna, preimport_info->dcna, (unsigned long long)preimport_info->pa,
-                   (unsigned long long)preimport_info->length, flags, preimport_info->numa_id,
+    OBMM_LOG_START("scna=%#x dcna=%#x {pa=%#lx length=%#lx} flags=%#lx nid=%d base_dist=%d seid="
+                    EID_FMT64" deid=" EID_FMT64 " priv_len=%u",
+                   preimport_info->scna, preimport_info->dcna, preimport_info->pa,
+                   preimport_info->length, flags, preimport_info->numa_id,
                    preimport_info->base_dist, EID_ARGS64(preimport_info->seid),
                    EID_ARGS64(preimport_info->deid), preimport_info->priv_len);
 
@@ -463,7 +461,7 @@ __attribute__((visibility("default"))) int obmm_preimport(struct obmm_preimport_
     }
 
     preimport_info->numa_id = cmd.numa_id;
-    OBMM_LOG_SUCCESS("numa_id=%d pa=%llx", preimport_info->numa_id, (unsigned long long)preimport_info->pa);
+    OBMM_LOG_SUCCESS("numa_id=%d pa=%#lx", preimport_info->numa_id, preimport_info->pa);
     return 0;
 }
 
@@ -479,9 +477,9 @@ __attribute__((visibility("default"))) int obmm_unpreimport(const struct obmm_pr
     }
 
     /* Log start with parameters */
-    OBMM_LOG_START("scna=%#x dcna=%#x {pa=%#llx length=%#llx} flags=%#lx nid=%d seid=" EID_FMT64 " deid=" EID_FMT64,
+    OBMM_LOG_START("scna=%#x dcna=%#x {pa=%#lx length=%#lx} flags=%#lx nid=%d seid=" EID_FMT64 " deid=" EID_FMT64,
                    preimport_info->scna, preimport_info->dcna,
-                   (unsigned long long)preimport_info->pa, (unsigned long long)preimport_info->length,
+                   preimport_info->pa, preimport_info->length,
                    flags, preimport_info->numa_id,
                    EID_ARGS64(preimport_info->seid), EID_ARGS64(preimport_info->deid));
 
@@ -504,7 +502,6 @@ __attribute__((visibility("default"))) int obmm_unpreimport(const struct obmm_pr
     memcpy(cmd.seid, preimport_info->seid, sizeof(cmd.seid));
 
     ret = ioctl(fd, OBMM_CMD_UNDECLARE_PREIMPORT, &cmd);
-
     if (ret < 0) {
         OBMM_LOG_FAIL("operation failed");
         return ret;
