@@ -15,7 +15,6 @@
  * Create: 2025-10-28
  */
 
-#include <asm-generic/errno.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
@@ -26,11 +25,15 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <syslog.h>
+#include <time.h>
+#include <stdarg.h>
 
 #include <ub/obmm.h>
 
 #include "vendor_adaptor.h"
 #include "libobmm.h"
+#include "libobmm_log.h"
 
 #define NUMA_NO_NODE (-1)
 #define OBMM_DEV_PATH "/dev/obmm"
@@ -101,15 +104,19 @@ __attribute__((visibility("default"))) mem_id obmm_export_useraddr(int pid, void
 {
     struct obmm_cmd_export_pid cmd_export_pid = {0};
     int fd, ret;
+    mem_id id;
 
     if (desc == NULL) {
+        OBMM_LOG_FAIL("desc is NULL");
         errno = EINVAL;
         return OBMM_INVALID_MEMID;
     }
 
     fd = obmm_dev_get_fd();
-    if (fd < 0)
+    if (fd < 0) {
+        OBMM_LOG_FAIL("failed to get device fd");
         return OBMM_INVALID_MEMID;
+    }
 
     cmd_export_pid.va = va;
     cmd_export_pid.length = length;
@@ -119,16 +126,23 @@ __attribute__((visibility("default"))) mem_id obmm_export_useraddr(int pid, void
     cmd_export_pid.priv = desc->priv;
     memcpy(cmd_export_pid.deid, desc->deid, sizeof(cmd_export_pid.deid));
 
+    /* Log start with full parameters */
+    OBMM_LOG_START("pid=%d length=%#lx priv_len=%u deid=" EID_FMT64,
+                   pid, length, desc->priv_len, EID_ARGS64(desc->deid));
+
     ret = vendor_adapt_export(desc, &cmd_export_pid.vendor_info, &cmd_export_pid.vendor_len,
                   &cmd_export_pid.pxm_numa);
     if (ret) {
+        OBMM_LOG_FAIL("process export info failed");
         errno = ret;
         return OBMM_INVALID_MEMID;
     }
     ret = ioctl(fd, OBMM_CMD_EXPORT_PID, &cmd_export_pid);
     free_vendor_info((void *)cmd_export_pid.vendor_info);
-    if (ret < 0)
+    if (ret < 0) {
+        OBMM_LOG_FAIL("operation failed");
         return OBMM_INVALID_MEMID;
+    }
 
     desc->addr = cmd_export_pid.uba;
     desc->length = length;
@@ -136,24 +150,30 @@ __attribute__((visibility("default"))) mem_id obmm_export_useraddr(int pid, void
     desc->scna = 0;
     desc->dcna = 0;
 
-    return cmd_export_pid.mem_id;
+    id = cmd_export_pid.mem_id;
+    OBMM_LOG_SUCCESS("mem_id=%llu", id);
+    return id;
 }
 
 __attribute__((visibility("default"))) mem_id obmm_export(const size_t length[OBMM_MAX_LOCAL_NUMA_NODES],
            unsigned long flags, struct obmm_mem_desc *desc)
 {
     struct obmm_cmd_export cmd_export;
+    char size_str[512];
     int fd, i, ret, errsv;
     mem_id memid;
 
     if (length == NULL || desc == NULL) {
+        OBMM_LOG_FAIL("length or desc is NULL");
         errno = EINVAL;
         return OBMM_INVALID_MEMID;
     }
 
     fd = obmm_dev_get_fd();
-    if (fd < 0)
+    if (fd < 0) {
+        OBMM_LOG_FAIL("failed to get device fd");
         return OBMM_INVALID_MEMID;
+    }
 
     memset(&cmd_export, 0, sizeof(struct obmm_cmd_export));
     memcpy(cmd_export.size, length, sizeof(size_t) * OBMM_MAX_LOCAL_NUMA_NODES);
@@ -163,8 +183,22 @@ __attribute__((visibility("default"))) mem_id obmm_export(const size_t length[OB
     cmd_export.priv = desc->priv;
     memcpy(cmd_export.deid, desc->deid, sizeof(cmd_export.deid));
 
+    /* Log start with full parameters */
+    size_str[0] = '\0';
+    for (i = 0; i < OBMM_MAX_LOCAL_NUMA_NODES; i++) {
+        if (length[i] > 0) {
+            char tmp[64];
+            snprintf(tmp, sizeof(tmp), " [%d]:%#lx", i, length[i]);
+            strcat(size_str, tmp);
+        }
+    }
+    OBMM_LOG_START("len(sizes)=%d sizes={%s} flags=%#lx deid=" EID_FMT64 " priv_len=%u",
+                   OBMM_MAX_LOCAL_NUMA_NODES, size_str, flags,
+                   EID_ARGS64(desc->deid), desc->priv_len);
+
     ret = vendor_adapt_export(desc, &cmd_export.vendor_info, &cmd_export.vendor_len, &cmd_export.pxm_numa);
     if (ret) {
+        OBMM_LOG_FAIL("operation failed");
         errno = ret;
         return OBMM_INVALID_MEMID;
     }
@@ -173,8 +207,10 @@ __attribute__((visibility("default"))) mem_id obmm_export(const size_t length[OB
     free_vendor_info((void *)cmd_export.vendor_info);
     errno = errsv;
 
-    if (ret < 0)
+    if (ret < 0) {
+        OBMM_LOG_FAIL("operation failed");
         return OBMM_INVALID_MEMID;
+    }
 
     memid = cmd_export.mem_id;
 
@@ -186,6 +222,7 @@ __attribute__((visibility("default"))) mem_id obmm_export(const size_t length[OB
     for (i = 0; i < OBMM_MAX_LOCAL_NUMA_NODES; i++)
         desc->length += length[i];
 
+    OBMM_LOG_SUCCESS("mem_id=%llu", memid);
     return memid;
 }
 
@@ -215,12 +252,14 @@ __attribute__((visibility("default"))) mem_id obmm_import(const struct obmm_mem_
     mem_id memid;
 
     if (desc == NULL) {
+        OBMM_LOG_FAIL("desc is NULL");
         errno = EINVAL;
         return OBMM_INVALID_MEMID;
     }
 
     if (((flags & OBMM_IMPORT_FLAG_NUMA_REMOTE) && !(flags & OBMM_IMPORT_FLAG_PREIMPORT)) &&
         (base_dist < 0 || base_dist > UINT8_MAX)) {
+        OBMM_LOG_FAIL("invalid base_dist for NUMA_REMOTE");
         errno = EINVAL;
         return OBMM_INVALID_MEMID;
     }
@@ -234,66 +273,104 @@ __attribute__((visibility("default"))) mem_id obmm_import(const struct obmm_mem_
         cmd_import.numa_id = NUMA_NO_NODE;
 
     fd = obmm_dev_get_fd();
-    if (fd < 0)
+    if (fd < 0) {
+        OBMM_LOG_FAIL("failed to get device fd");
         return OBMM_INVALID_MEMID;
+    }
+
+    /* Log start with full parameters */
+    OBMM_LOG_START("scna=%#x {pa=%#llx length=%#llx} flags=%#lx nid=%d base_dist=%d seid=" EID_FMT64 " priv_len=%u",
+                   desc->scna, (unsigned long long)desc->addr, (unsigned long long)desc->length,
+                   flags, cmd_import.numa_id, base_dist, EID_ARGS64(desc->seid), desc->priv_len);
 
     ret = vendor_fixup_import_cmd(&cmd_import);
-    if (ret)
+    if (ret) {
+        OBMM_LOG_FAIL("operation failed");
         return OBMM_INVALID_MEMID;
+    }
 
     ret = ioctl(fd, OBMM_CMD_IMPORT, &cmd_import);
     errsv = errno;
     vendor_cleanup_import_cmd(&cmd_import);
     errno = errsv;
 
-    if (ret < 0)
+    if (ret < 0) {
+        OBMM_LOG_FAIL("operation failed");
         return OBMM_INVALID_MEMID;
+    }
 
     if (numa != NULL)
         *numa = cmd_import.numa_id;
     memid = cmd_import.mem_id;
 
+    OBMM_LOG_SUCCESS("mem_id=%llu", memid);
     return memid;
 }
 
 __attribute__((visibility("default"))) int obmm_unexport(mem_id id, unsigned long flags)
 {
     struct obmm_cmd_unexport cmd_unexport;
-    int fd;
+    int fd, ret;
 
     if (id == OBMM_INVALID_MEMID) {
+        OBMM_LOG_FAIL("invalid mem_id");
         errno = EINVAL;
         return -1;
     }
 
     fd = obmm_dev_get_fd();
-    if (fd < 0)
+    if (fd < 0) {
+        OBMM_LOG_FAIL("failed to get device fd");
         return fd;
+    }
 
     cmd_unexport.mem_id = id;
     cmd_unexport.flags = flags;
 
-    return ioctl(fd, OBMM_CMD_UNEXPORT, &cmd_unexport);
+    /* Log start with parameters */
+    OBMM_LOG_START("mem_id=%llu flags=%#lx", (unsigned long long)id, flags);
+
+    ret = ioctl(fd, OBMM_CMD_UNEXPORT, &cmd_unexport);
+    if (ret < 0) {
+        OBMM_LOG_FAIL("operation failed");
+        return ret;
+    }
+
+    OBMM_LOG_SUCCESS("mem_id=%llu", id);
+    return ret;
 }
 
 __attribute__((visibility("default"))) int obmm_unimport(mem_id id, unsigned long flags)
 {
     struct obmm_cmd_unimport cmd_unimport;
-    int fd;
+    int fd, ret;
 
     if (id == OBMM_INVALID_MEMID) {
+        OBMM_LOG_FAIL("invalid mem_id");
         errno = EINVAL;
         return -1;
     }
 
     fd = obmm_dev_get_fd();
-    if (fd < 0)
+    if (fd < 0) {
+        OBMM_LOG_FAIL("failed to get device fd");
         return fd;
+    }
 
     cmd_unimport.mem_id = id;
     cmd_unimport.flags = flags;
 
-    return ioctl(fd, OBMM_CMD_UNIMPORT, &cmd_unimport);
+    /* Log start with parameters */
+    OBMM_LOG_START("mem_id=%llu flags=%#lx", (unsigned long long)id, flags);
+
+    ret = ioctl(fd, OBMM_CMD_UNIMPORT, &cmd_unimport);
+    if (ret < 0) {
+        OBMM_LOG_FAIL("operation failed");
+        return ret;
+    }
+
+    OBMM_LOG_SUCCESS("mem_id=%llu", (unsigned long long)id);
+    return ret;
 }
 
 __attribute__((visibility("default"))) int obmm_set_ownership(int fd, void *start, void *end, int prot)
@@ -337,8 +414,10 @@ __attribute__((visibility("default"))) int obmm_preimport(struct obmm_preimport_
     }
 
     fd = obmm_dev_get_fd();
-    if (fd < 0)
+    if (fd < 0) {
+        OBMM_LOG_FAIL("failed to get device fd");
         return fd;
+    }
 
     cmd.pa = preimport_info->pa;
     cmd.length = preimport_info->length;
@@ -352,18 +431,31 @@ __attribute__((visibility("default"))) int obmm_preimport(struct obmm_preimport_
     memcpy(cmd.deid, preimport_info->deid, sizeof(cmd.deid));
     memcpy(cmd.seid, preimport_info->seid, sizeof(cmd.seid));
 
+    /* Log start with full parameters */
+    OBMM_LOG_START("scna=%#x dcna=%#x {pa=%#llx length=%#llx} flags=%#lx nid=%d base_dist=%d seid="
+                    EID_FMT64" deid=" EID_FMT64 "priv_len=%u",
+                   preimport_info->scna, preimport_info->dcna, (unsigned long long)preimport_info->pa,
+                   (unsigned long long)preimport_info->length, flags, preimport_info->numa_id,
+                   preimport_info->base_dist, EID_ARGS64(preimport_info->seid),
+                   EID_ARGS64(preimport_info->deid), preimport_info->priv_len);
     ret = vendor_fixup_preimport_cmd(&cmd);
-    if (ret)
+    if (ret) {
+        OBMM_LOG_FAIL("vendor_fixup_preimport_cmd failed");
         return ret;
+    }
 
     ret = ioctl(fd, OBMM_CMD_DECLARE_PREIMPORT, &cmd);
     errsv = errno;
     vendor_cleanup_preimport_cmd(&cmd);
     errno = errsv;
 
-    if (ret < 0)
+    if (ret < 0) {
+        OBMM_LOG_FAIL("operation failed");
         return ret;
+    }
+
     preimport_info->numa_id = cmd.numa_id;
+    OBMM_LOG_SUCCESS("numa_id=%d pa=%llx", preimport_info->numa_id, (unsigned long long)preimport_info->pa);
     return 0;
 }
 
@@ -371,7 +463,7 @@ __attribute__((visibility("default"))) int obmm_unpreimport(const struct obmm_pr
     unsigned long flags)
 {
     struct obmm_cmd_preimport cmd;
-    int fd;
+    int ret, fd;
 
     if (preimport_info == NULL) {
         errno = EINVAL;
@@ -379,8 +471,10 @@ __attribute__((visibility("default"))) int obmm_unpreimport(const struct obmm_pr
     }
 
     fd = obmm_dev_get_fd();
-    if (fd < 0)
+    if (fd < 0) {
+        OBMM_LOG_FAIL("failed to get device fd");
         return fd;
+    }
 
     cmd.pa = preimport_info->pa;
     cmd.length = preimport_info->length;
@@ -394,5 +488,19 @@ __attribute__((visibility("default"))) int obmm_unpreimport(const struct obmm_pr
     memcpy(cmd.deid, preimport_info->deid, sizeof(cmd.deid));
     memcpy(cmd.seid, preimport_info->seid, sizeof(cmd.seid));
 
-    return ioctl(fd, OBMM_CMD_UNDECLARE_PREIMPORT, &cmd);
+    /* Log start with parameters */
+    OBMM_LOG_START("scna=%#x dcna=%#x {pa=%#llx length=%#llx} flags=%#lx nid=%d seid=" EID_FMT64 " deid=" EID_FMT64,
+                   preimport_info->scna, preimport_info->dcna,
+                   (unsigned long long)preimport_info->pa, (unsigned long long)preimport_info->length,
+                   flags, preimport_info->numa_id,
+                   EID_ARGS64(preimport_info->seid), EID_ARGS64(preimport_info->deid));
+
+    ret = ioctl(fd, OBMM_CMD_UNDECLARE_PREIMPORT, &cmd);
+
+    if (ret < 0) {
+        OBMM_LOG_FAIL("operation failed");
+        return ret;
+    }
+    OBMM_LOG_SUCCESS("numa_id=%d pa=%llx", preimport_info->numa_id, (unsigned long long)preimport_info->pa);
+    return 0;
 }
