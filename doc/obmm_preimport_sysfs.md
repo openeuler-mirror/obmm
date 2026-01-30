@@ -10,10 +10,10 @@ obmm_preimport sysfs ，为囊括系统内所有预引入地址段的 sysfs 文�
 
 * 起始物理地址：十六进制数，预引入地址段的最小有效地址。
 * 结束物理地址：十六进制数，预引入地址段的最大有效地址。
+* dcna：十六进制数，内存提供方 bus controller 的 clan network address，含义详见 UB 协议。仅记录，不参与通路配置。
 * scna：十六进制数，内存使用方 bus controller 的 clan network address，含义详见 UB 协议。
-* dcna：十六进制数，内存提供方 bus controller 的 clan network address，含义详见 UB 协议。仅记录，不参与通路配置
-* seid：十六进制数，内存使用方 bus controller 的 entity id，含义详见 UB 协议。与scna归属同一个bus controller。以u64 : u64 格式打印
 * deid：十六进制数，内存提供方 bus controller 的 entity id，含义详见 UB 协议。仅记录，不参与通路配置。以u64 : u64 格式打印
+* seid：十六进制数，内存使用方 bus controller 的 entity id，含义详见 UB 协议。仅记录，不参与通路配置。以u64 : u64 格式打印
 * numa_id：十进制数，预引入地址段所属 的 NUMA 节点。
 
 注：为和/proc/iomem, /proc/\$pid/maps 等标准维测文件保持一致，物理地址段没有附带0x前缀，但仍为16进制数表示。

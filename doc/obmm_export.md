@@ -47,7 +47,7 @@ length需要满足如下要求：
 ```c
 struct obmm_mem_desc {
 	uint64_t addr; // 出参：返回此次export生成的uba
-	uint64_t length; // 出参：返回length中各元素之和
+	uint64_t length; // 出参：返回导出内存的总大小
 	/* 128bit eid, ordered by little-endian */
 	uint8_t seid[16]; // export流程忽略
 	uint8_t deid[16];  // 入参：指定借出内存所在bus controller的eid
