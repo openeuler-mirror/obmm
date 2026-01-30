@@ -270,6 +270,7 @@ int vendor_fixup_import_cmd(struct obmm_cmd_import *cmd)
 
 void vendor_cleanup_import_cmd(struct obmm_cmd_import *cmd)
 {
+    (void)cmd;
 }
 
 int vendor_fixup_preimport_cmd(struct obmm_cmd_preimport *cmd)
@@ -289,4 +290,5 @@ int vendor_fixup_preimport_cmd(struct obmm_cmd_preimport *cmd)
 
 void vendor_cleanup_preimport_cmd(struct obmm_cmd_preimport *cmd)
 {
+    (void)cmd;
 }
