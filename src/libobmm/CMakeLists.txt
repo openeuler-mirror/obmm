@@ -10,8 +10,8 @@ target_include_directories(OBMM_SO PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 
 set(OBMM_NAME obmm)
 set_target_properties(OBMM_SO PROPERTIES OUTPUT_NAME ${OBMM_NAME}
-    VERSION 1.0.1
-	SOVERSION 1)
+	VERSION ${OBMM_VERSION}
+	SOVERSION ${OBMM_SOVERSION})
 
 target_compile_options(OBMM_SO PRIVATE -Wall -Wextra -Wfloat-equal -fno-common -std=gnu99 -fvisibility=hidden
 	-Wuninitialized -Wno-error -Wno-error=format -Wundef -Wunused -Wdate-time -Wshadow -Wvla
@@ -32,4 +32,5 @@ else()
 	target_link_options(OBMM_SO PRIVATE -s)
 endif()
 
-install(TARGETS OBMM_SO LIBRARY DESTINATION lib OPTIONAL)
+install(TARGETS OBMM_SO LIBRARY DESTINATION lib64 OPTIONAL)
+install(FILES libobmm.h DESTINATION include)
