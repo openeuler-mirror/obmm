@@ -15,25 +15,25 @@
  * Create: 2025-10-28
  */
 
-#include "libobmm.h"
-#include "libobmm_log.h"
-#include "vendor_adaptor.h"
-
-#include <errno.h>
+#include <asm-generic/errno.h>
 #include <fcntl.h>
-#include <pthread.h>
-#include <stdarg.h>
+#include <errno.h>
+#include <stdio.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <syslog.h>
-#include <time.h>
+#include <stdlib.h>
+#include <pthread.h>
 #include <unistd.h>
 
 #include <ub/obmm.h>
+
+#include "vendor_adaptor.h"
+#include "libobmm_log.h"
+#include "libobmm.h"
 
 #define NUMA_NO_NODE (-1)
 #define OBMM_DEV_PATH "/dev/obmm"
@@ -42,7 +42,8 @@
  * Format per node: " [node_id]:0x<address>" ~ 32 bytes per node
  * Example: " [0]:0x100000000" = 19 bytes
  */
-#define SIZE_STR_BUFFER_SIZE (OBMM_MAX_LOCAL_NUMA_NODES * 32)
+#define SIZE_STR_BUFFER_SIZE_PER_NODE 32
+#define SIZE_STR_BUFFER_SIZE (OBMM_MAX_LOCAL_NUMA_NODES * SIZE_STR_BUFFER_SIZE_PER_NODE)
 
 static int obmm_dev_get_fd(void)
 {

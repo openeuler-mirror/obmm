@@ -62,16 +62,7 @@ OBMM使用以下syslog级别：
 [OBMM] obmm_export: START pid=0 length=0x200000 deid=0x1234:0x5678 priv_len=0
 [OBMM] obmm_import: START scna=0x1 {pa=0x100000000 length=0x200000} flags=0x0 nid=0 base_dist=0 seid=0xabcd:0xefgh priv_len=0
 ```
-
-**字段说明**：
-* 函数名：调用的OBMM接口
-* **pid**：进程ID（仅 `obmm_export_useraddr`）
-* **length**：内存长度
-* **deid/seid**：16字节Endpoint ID（小端序，格式化为两个64位十六进制数）
-* **flags**：操作标志位
-* **nid**：NUMA节点ID
-* **base_dist**：基础距离
-* **priv_len**：私有数据长度
+具体字段参见各接口文档。
 
 #### 操作成功日志
 
@@ -126,11 +117,13 @@ sudo systemctl status syslog   # 某些系统
 * 应用程序未正常调用OBMM接口
 * 日志被系统配置过滤
 * 日志文件已被轮转清理
+* syslog服务错误
 
 **解决方法**：
 1. 检查应用日志，确认OBMM接口调用情况
 2. 查看较早的日志文件（如果存在）
 3. 检查系统日志轮转配置，查看归档日志文件
+4. 尝试重启syslog服务
 
 #### 3. 日志时间戳不准确
 
@@ -155,6 +148,6 @@ sudo systemctl restart systemd-timesyncd
 3. 定期备份重要的日志数据用于分析
 4. 考虑使用日志集中收集工具（如ELK、Splunk）
 
-## 相关文档 SEE ALSO
+## 相关文档
 
 obmm_export(3), obmm_import(3), obmm_unexport(3), obmm_unimport(3), syslog(3)

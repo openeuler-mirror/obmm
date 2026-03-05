@@ -29,9 +29,6 @@
 #include "libobmm_log.h"
 #include "vendor_adaptor.h"
 
-/* Use unified logging macros */
-#define pr_err(fmt, ...)	OBMM_LOGE("[vendor-adaptor] " fmt, ##__VA_ARGS__)
-
 #define EID_SIZE 16
 #define MAX_CONTROLLERS 8
 #define MAX_PATH 256
@@ -68,13 +65,13 @@ static int read_int_from_file(const char *path)
     long ret;
 
     if (!fp) {
-        pr_err("failed to open file %s.", path);
+        OBMM_LOGE("failed to open file %s.", path);
         return -1;
     }
 
     nread = fread(str, 1, sizeof(str) - 1, fp);
     if (nread == 0) {
-        pr_err("failed to read data from %s.", path);
+        OBMM_LOGE("failed to read data from %s.", path);
         (void)fclose(fp);
         return -1;
     }
@@ -83,11 +80,11 @@ static int read_int_from_file(const char *path)
     /* hex and decimal are possible */
     ret = strtol(str, &end, 0);
     if (end == str) {
-        pr_err("failed to parse int value from '%s' in %s.", str, path);
+        OBMM_LOGE("failed to parse int value from '%s' in %s.", str, path);
         return -1;
     }
     if (ret > INT_MAX || ret < INT_MIN) {
-        pr_err("read occured overflowed %s.", path);
+        OBMM_LOGE("read occured overflowed %s.", path);
         return -1;
     }
     return (int)ret;
@@ -99,8 +96,10 @@ static int get_ubc_attr(const char *ubc_path, const char *attr)
     int ret;
 
     ret = snprintf(attr_path, sizeof(attr_path), "%s/%s", ubc_path, attr);
-    if (ret <= 0)
+    if (ret <= 0) {
+        OBMM_LOGE("failed to construct attr path for %s.", attr);
         return -1;
+    }
     return read_int_from_file(attr_path);
 }
 
@@ -114,15 +113,18 @@ static int get_ubc_path(int ubc_index, char *ubc_path, size_t path_len)
 
     ret = glob(pattern, 0, NULL, &g);
     if (ret != 0) {
+        OBMM_LOGE("glob failed for pattern %s, ret %d.", pattern, ret);
         globfree(&g);
         return ENODEV;
     }
     if (g.gl_pathc == 0) {
+        OBMM_LOGE("no path found for pattern %s.", pattern);
         globfree(&g);
         return ENODEV;
     }
     glob_path = dirname(g.gl_pathv[0]);
     if (strlen(glob_path) >= path_len) {
+        OBMM_LOGE("path length %zu exceeds limit %zu for %s.", strlen(glob_path), path_len, glob_path);
         globfree(&g);
         return EINVAL;
     }
@@ -140,7 +142,7 @@ static int get_ubc_by_eid(unsigned int *uba_index, char *ubc_path, size_t path_l
 
         ret = get_ubc_attr(ubc_path, "eid"); /* host endian */
         if (ret < 0) {
-            pr_err("failed to read ctl eid, path %s.", ubc_path);
+            OBMM_LOGE("failed to read ctl eid, path %s.", ubc_path);
             errno = ENODEV;
             return -1;
         }
@@ -154,7 +156,7 @@ static int get_ubc_by_eid(unsigned int *uba_index, char *ubc_path, size_t path_l
         *uba_index = i;
         return 0;
     }
-    pr_err("failed to find ctl, eid:" EID_FMT64 ".", EID_ARGS64(eid));
+    OBMM_LOGE("failed to find ctl, eid:" EID_FMT64 ".", EID_ARGS64(eid));
     errno = ENODEV;
     return -1;
 }
@@ -166,18 +168,20 @@ static struct ub_bus_ctl_node get_ctl_by_eid(uint8_t *eid)
     unsigned int ubc_index;
 
     int ret = get_ubc_by_eid(&ubc_index, ubc_path, sizeof(ubc_path), eid);
-    if (ret)
+    if (ret) {
+        OBMM_LOGE("failed to get ubc by eid, ret %d.", ret);
         return node;
+    }
 
     node.ummu_mapping = get_ubc_attr(ubc_path, "ummu_map");
     if (node.ummu_mapping < 0) {
-        pr_err("failed to read ctl ummu_map, path %s.", ubc_path);
+        OBMM_LOGE("failed to read ctl ummu_map, path %s.", ubc_path);
         return node;
     }
 
     node.numa_id = get_ubc_attr(ubc_path, "numa");
     if (node.numa_id < 0) {
-        pr_err("failed to read ctl numa, path %s.", ubc_path);
+        OBMM_LOGE("failed to read ctl numa, path %s.", ubc_path);
         return node;
     }
     node.valid = true;
@@ -195,7 +199,7 @@ static int get_primary_cna_by_eid(unsigned int *cna, const uint8_t *eid)
 
     ret = get_ubc_attr(ubc_path, "primary_cna");
     if (ret < 0) {
-        pr_err("failed to read ctl primary_cna, path %s.", ubc_path);
+        OBMM_LOGE("failed to read ctl primary_cna, path %s.", ubc_path);
         errno = ENODEV;
         return -1;
     }
@@ -208,10 +212,13 @@ static int init_vendor_info(int ummu_mapping, const void **vendor_info, uint16_t
 {
     struct hisi_ummu_tdev_info *info = (struct hisi_ummu_tdev_info *)calloc(1, sizeof(*info));
 
-    if (!info)
+    if (!info) {
+        OBMM_LOGE("failed to allocate memory for vendor info.");
         return ENOMEM;
+    }
 
     if (sizeof(struct hisi_ummu_tdev_info) > OBMM_MAX_VENDOR_LEN) {
+        OBMM_LOGE("vendor info size %zu exceeds maximum %d.", sizeof(struct hisi_ummu_tdev_info), OBMM_MAX_VENDOR_LEN);
         free(info);
         return EINVAL;
     }
@@ -231,16 +238,18 @@ int vendor_adapt_export(struct obmm_mem_desc *desc, const void **vendor_info,
     int ret;
 
     if (memcmp(desc->deid, g_invalid_eid, sizeof(desc->deid)) == 0) {
-        pr_err("zero-type eid is not allowed.");
+        OBMM_LOGE("zero-type eid is not allowed.");
         return EINVAL;
     }
     node = get_ctl_by_eid(desc->deid);
-    if (!node.valid)
+    if (!node.valid) {
+        OBMM_LOGE("failed to get ctl by eid " EID_FMT64 ".", EID_ARGS64(desc->deid));
         return ENODEV;
+    }
 
     ret = init_vendor_info(node.ummu_mapping, vendor_info, vendor_len);
     if (ret) {
-        pr_err("init_vendor_info failed, ret %d.", ret);
+        OBMM_LOGE("init_vendor_info failed, ret %d.", ret);
         return ret;
     }
     *numa = node.numa_id;
@@ -259,7 +268,7 @@ int vendor_fixup_import_cmd(struct obmm_cmd_import *cmd)
     if (ret)
         return ret;
     if (cna != cmd->scna) {
-        pr_err("ctl with eid " EID_FMT64 " has scna=%#x which is different from scna=%#x.",
+        OBMM_LOGE("ctl with eid " EID_FMT64 " has scna=%#x which is different from scna=%#x.",
                 EID_ARGS64(cmd->seid), cna, cmd->scna);
         errno = ENODEV;
         return -1;
@@ -279,7 +288,7 @@ int vendor_fixup_preimport_cmd(struct obmm_cmd_preimport *cmd)
     if (ret)
         return ret;
     if (cna != cmd->scna) {
-        pr_err("ctl with eid " EID_FMT64 " has scna=%#x which is different from scna=%#x.",
+        OBMM_LOGE("ctl with eid " EID_FMT64 " has scna=%#x which is different from scna=%#x.",
                 EID_ARGS64(cmd->seid), cna, cmd->scna);
         errno = ENODEV;
         return -1;
