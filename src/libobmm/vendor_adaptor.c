@@ -66,6 +66,7 @@ static int read_int_from_file(const char *path)
 
     if (!fp) {
         OBMM_LOGE("failed to open file %s.", path);
+        errno = ENOENT;
         return -1;
     }
 
@@ -73,6 +74,7 @@ static int read_int_from_file(const char *path)
     if (nread == 0) {
         OBMM_LOGE("failed to read data from %s.", path);
         (void)fclose(fp);
+        errno = EIO;
         return -1;
     }
     (void)fclose(fp);
@@ -81,10 +83,12 @@ static int read_int_from_file(const char *path)
     ret = strtol(str, &end, 0);
     if (end == str) {
         OBMM_LOGE("failed to parse int value from '%s' in %s.", str, path);
+        errno = EINVAL;
         return -1;
     }
     if (ret > INT_MAX || ret < INT_MIN) {
         OBMM_LOGE("read occured overflowed %s.", path);
+        errno = ERANGE;
         return -1;
     }
     return (int)ret;
@@ -96,8 +100,9 @@ static int get_ubc_attr(const char *ubc_path, const char *attr)
     int ret;
 
     ret = snprintf(attr_path, sizeof(attr_path), "%s/%s", ubc_path, attr);
-    if (ret <= 0) {
+    if (ret < 0 || (size_t)ret >= sizeof(attr_path)) {
         OBMM_LOGE("failed to construct attr path for %s.", attr);
+        errno = EINVAL;
         return -1;
     }
     return read_int_from_file(attr_path);
@@ -115,18 +120,21 @@ static int get_ubc_path(int ubc_index, char *ubc_path, size_t path_len)
     if (ret != 0) {
         OBMM_LOGE("glob failed for pattern %s, ret %d.", pattern, ret);
         globfree(&g);
-        return ENODEV;
+        errno = ENODEV;
+        return -1;
     }
     if (g.gl_pathc == 0) {
         OBMM_LOGE("no path found for pattern %s.", pattern);
         globfree(&g);
-        return ENODEV;
+        errno = ENODEV;
+        return -1;
     }
     glob_path = dirname(g.gl_pathv[0]);
     if (strlen(glob_path) >= path_len) {
         OBMM_LOGE("path length %zu exceeds limit %zu for %s.", strlen(glob_path), path_len, glob_path);
         globfree(&g);
-        return EINVAL;
+        errno = EINVAL;
+        return -1;
     }
     (void)snprintf(ubc_path, path_len, "%s", glob_path);
     globfree(&g);
@@ -200,7 +208,6 @@ static int get_primary_cna_by_eid(unsigned int *cna, const uint8_t *eid)
     ret = get_ubc_attr(ubc_path, "primary_cna");
     if (ret < 0) {
         OBMM_LOGE("failed to read ctl primary_cna, path %s.", ubc_path);
-        errno = ENODEV;
         return -1;
     }
     *cna = (unsigned int)ret;
@@ -214,13 +221,15 @@ static int init_vendor_info(int ummu_mapping, const void **vendor_info, uint16_t
 
     if (!info) {
         OBMM_LOGE("failed to allocate memory for vendor info.");
-        return ENOMEM;
+        errno = ENOMEM;
+        return -1;
     }
 
     if (sizeof(struct hisi_ummu_tdev_info) > OBMM_MAX_VENDOR_LEN) {
         OBMM_LOGE("vendor info size %zu exceeds maximum %d.", sizeof(struct hisi_ummu_tdev_info), OBMM_MAX_VENDOR_LEN);
         free(info);
-        return EINVAL;
+        errno = EINVAL;
+        return -1;
     }
 
     info->ver = HISI_TDEV_INFO_V1;
@@ -239,12 +248,14 @@ int vendor_adapt_export(struct obmm_mem_desc *desc, const void **vendor_info,
 
     if (memcmp(desc->deid, g_invalid_eid, sizeof(desc->deid)) == 0) {
         OBMM_LOGE("zero-type eid is not allowed.");
-        return EINVAL;
+        errno = EINVAL;
+        return -1;
     }
     node = get_ctl_by_eid(desc->deid);
     if (!node.valid) {
         OBMM_LOGE("failed to get ctl by eid " EID_FMT64 ".", EID_ARGS64(desc->deid));
-        return ENODEV;
+        errno = ENODEV;
+        return -1;
     }
 
     ret = init_vendor_info(node.ummu_mapping, vendor_info, vendor_len);

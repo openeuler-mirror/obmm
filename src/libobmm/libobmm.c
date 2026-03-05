@@ -141,7 +141,6 @@ __attribute__((visibility("default"))) mem_id obmm_export_useraddr(int pid, void
                   &cmd_export_pid.pxm_numa);
     if (ret) {
         OBMM_LOG_FAIL("process export info failed");
-        errno = ret;
         return OBMM_INVALID_MEMID;
     }
     ret = ioctl(fd, OBMM_CMD_EXPORT_PID, &cmd_export_pid);
@@ -206,7 +205,6 @@ __attribute__((visibility("default"))) mem_id obmm_export(const size_t length[OB
     ret = vendor_adapt_export(desc, &cmd_export.vendor_info, &cmd_export.vendor_len, &cmd_export.pxm_numa);
     if (ret) {
         OBMM_LOG_FAIL("operation failed");
-        errno = ret;
         return OBMM_INVALID_MEMID;
     }
     ret = ioctl(fd, OBMM_CMD_EXPORT, &cmd_export);
