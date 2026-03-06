@@ -2,6 +2,21 @@ cmake_minimum_required(VERSION 3.10)
 
 project(OBMM_SO C)
 
+# Define version file path
+set(VERSION_FILE_PATH ${CMAKE_CURRENT_LIST_DIR}/../../VERSION)
+
+# Read version from VERSION file
+file(READ ${VERSION_FILE_PATH} OBMM_VERSION)
+string(STRIP ${OBMM_VERSION} OBMM_VERSION)
+
+# Parse version into major, minor, patch
+string(REGEX REPLACE "([0-9]+)\.([0-9]+)\.([0-9]+)" "\\1" OBMM_VERSION_MAJOR ${OBMM_VERSION})
+string(REGEX REPLACE "([0-9]+)\.([0-9]+)\.([0-9]+)" "\\2" OBMM_VERSION_MINOR ${OBMM_VERSION})
+string(REGEX REPLACE "([0-9]+)\.([0-9]+)\.([0-9]+)" "\\3" OBMM_VERSION_PATCH ${OBMM_VERSION})
+
+# Set SOVERSION to major version (common practice for library versioning)
+set(OBMM_SOVERSION ${OBMM_VERSION_MAJOR})
+
 aux_source_directory(${CMAKE_CURRENT_LIST_DIR} LIBOBMM_DIR_SRCS)
 add_library(OBMM_SO SHARED ${LIBOBMM_DIR_SRCS})
 target_link_libraries(OBMM_SO PRIVATE)
@@ -10,8 +25,8 @@ target_include_directories(OBMM_SO PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 
 set(OBMM_NAME obmm)
 set_target_properties(OBMM_SO PROPERTIES OUTPUT_NAME ${OBMM_NAME}
-    VERSION 1.0.1
-	SOVERSION 1)
+	VERSION ${OBMM_VERSION}
+	SOVERSION ${OBMM_SOVERSION})
 
 target_compile_options(OBMM_SO PRIVATE -Wall -Wextra -Wfloat-equal -fno-common -std=gnu99 -fvisibility=hidden
 	-Wuninitialized -Wno-error -Wno-error=format -Wundef -Wunused -Wdate-time -Wshadow -Wvla
@@ -32,4 +47,5 @@ else()
 	target_link_options(OBMM_SO PRIVATE -s)
 endif()
 
-install(TARGETS OBMM_SO LIBRARY DESTINATION lib OPTIONAL)
+install(TARGETS OBMM_SO LIBRARY DESTINATION lib64 OPTIONAL)
+install(FILES libobmm.h DESTINATION include)
