@@ -33,7 +33,6 @@
 #define MAX_CONTROLLERS 8
 #define MAX_PATH 256
 #define MAX_CHAR 64
-#define INVAL_UMMU_MAPPING (-1)
 
 enum hisi_ummu_tdev_version {
     HISI_TDEV_INFO_V1 = 0,
@@ -272,19 +271,25 @@ void free_vendor_info(void *vendor_info)
     free(vendor_info);
 }
 
-int vendor_fixup_import_cmd(struct obmm_cmd_import *cmd)
+static int validate_cna_match(const uint8_t *seid, uint32_t expected_scna)
 {
     unsigned int cna;
-    int ret = get_primary_cna_by_eid(&cna, cmd->seid);
-    if (ret)
+    int ret = get_primary_cna_by_eid(&cna, seid);
+    if (ret) {
         return ret;
-    if (cna != cmd->scna) {
+    }
+    if (cna != expected_scna) {
         OBMM_LOGE("ctl with eid " EID_FMT64 " has scna=%#x which is different from scna=%#x.",
-                EID_ARGS64(cmd->seid), cna, cmd->scna);
+                EID_ARGS64(seid), cna, expected_scna);
         errno = ENODEV;
         return -1;
     }
     return 0;
+}
+
+int vendor_fixup_import_cmd(struct obmm_cmd_import *cmd)
+{
+    return validate_cna_match(cmd->seid, cmd->scna);
 }
 
 void vendor_cleanup_import_cmd(struct obmm_cmd_import *cmd)
@@ -294,17 +299,7 @@ void vendor_cleanup_import_cmd(struct obmm_cmd_import *cmd)
 
 int vendor_fixup_preimport_cmd(struct obmm_cmd_preimport *cmd)
 {
-    unsigned int cna;
-    int ret = get_primary_cna_by_eid(&cna, cmd->seid);
-    if (ret)
-        return ret;
-    if (cna != cmd->scna) {
-        OBMM_LOGE("ctl with eid " EID_FMT64 " has scna=%#x which is different from scna=%#x.",
-                EID_ARGS64(cmd->seid), cna, cmd->scna);
-        errno = ENODEV;
-        return -1;
-    }
-    return 0;
+    return validate_cna_match(cmd->seid, cmd->scna);
 }
 
 void vendor_cleanup_preimport_cmd(struct obmm_cmd_preimport *cmd)

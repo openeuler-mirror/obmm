@@ -15,13 +15,10 @@
  * Create: 2025-10-28
  */
 
-#include <asm-generic/errno.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdatomic.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
