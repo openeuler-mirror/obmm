@@ -38,5 +38,6 @@ sysfs 文档
 | ----------------------- | --------------------------------------------------------- |
 | obmm_shmdev_sysfs.md    | /sys/devices/obmm/obmm_shmdev\${mem_id}/ 维测目录内容说明 |
 | obmm_preimport_sysfs.md | /proc/obmm/preimport_info 维测文件格式说明                |
+| obmm_mempool_sysfs.md   | /sys/kernel/obmm_mempool/ 内存池状态说明                  |
 
 目前各文档已初步成型。errno、编程 demo 持续补充中。
