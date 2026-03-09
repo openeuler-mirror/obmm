@@ -39,7 +39,7 @@ length需要满足如下要求：
 3. length的所有元素之和大于零。
 
 **flags**：导出内存的属性，支持以下 flag
-*OBMM_EXPORT_FLAG_FAST*：仅从内存缓冲池中申请内存进行export操作。若内存缓冲池内存不足，不会向系统申请内存，直接返回错误。
+*OBMM_EXPORT_FLAG_FAST*：仅从内存缓冲池的已清零内存中进行分配。若可用内存不足，不会向系统申请内存，直接返回错误。可通过 obmm_mempool_sysfs(5) 查看各 NUMA 节点的 `available_cleared` 值，确认可用内存是否满足需求。
 *OBMM_EXPORT_FLAG_ALLOW_MMAP*: 允许通过mmap对应memid的字符设备的方式，使用该内存。
 
 **desc**: 指向一个OBMM内存描述符，用于传入内存的属性参数，同时接收地址信息。其中deid、priv_len、priv域段为入参，addr，length，tokenid域段为出参，其他参数会被忽略。

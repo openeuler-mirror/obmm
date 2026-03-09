@@ -49,6 +49,8 @@ UB memory 对提供方的内存有连续性、缓存属性等方面的要求，�
 
 为加速内存分配，OBMM 维护了一个可选的缓冲内存池。该内存池的大小、调整间隔由内核模块参数决定。导出内存时，会优先从缓冲内存池中申请内存，如果缓冲内存池中内存不足，再从上述内存源向系统申请内存。每隔一个调整间隔，OBMM会尝试将内存池填充至其目标大小。本地内存不足，触发OOM事件时，OBMM会将内存池中的内存还给系统使用，一段时间后再尝试重新填充该内存池。
 
+内存池状态可通过 sysfs 查看，详见 obmm_mempool_sysfs(5)。
+
 ## OBMM 部署
 
 ### 内核启动项
@@ -97,7 +99,7 @@ OBMM内核模块依赖以下内核参数：
 OBMM 内核模块为 `obmm.ko` ，支持下列 4 个内核启动参数：
 
 1. **mempool_size=(\\d+)[KMG]**：用于配置OBMM缓冲内存池的大小，默认为1G。指定OBMM维护的内存池的容量上限。内存池容量会被每个本地NUMA节点均分，例如mempool_size=4G，有4个本地NUMA节点时，OBMM会为每个本地NUMA缓冲至多1G内存。OBMM会动态、异步地从内存源申请释放内存，将缓冲内存池的大小维持在预期大小上下，用于提升内存的借出速度。
-2. **mempool_refill_timeout=(\\d+)**：用于指示本地内存不足触发OBMM缓冲池释放后，OBMM尝试重新扩充内存池的时间间隔，单位为毫秒，默认为100。OBMM在收到内核内存不足的通知时，会评估是否可通过释放缓冲池的缓冲内存以缓解系统内存不足的问题。如果有缓解效果，OBMM会释放全部内存池内存，并在mempool_refill_timeout毫秒后重新尝试内存池填充。
+2. **mempool_refill_timeout=(\\d+)**：用于指示本地内存不足触发OBMM缓冲池释放后，OBMM尝试重新扩充内存池的时间间隔，单位为毫秒，默认为30000。OBMM在收到内核内存不足的通知时，会评估是否可通过释放缓冲池的缓冲内存以缓解系统内存不足的问题。如果有缓解效果，OBMM会释放全部内存池内存，并在mempool_refill_timeout毫秒后重新尝试内存池填充。
 3. **mempool_allocator**：用于指定OBMM导出内存时的内存来源。当前支持hugetlb_pmd, hugetlb_pud, buddy_highmem三种内存来源。未指定时，默认为buddy_highmem。hugetlb_pmd和hugetlb_pud表示内存来自Linux hugetlbfs，内存需要在sysfs中手动预留后方可使用。仅当pmd_mapping=100%时，mempool_allocator允许使用hugetlb_pmd。buddy_highmem表示内存来自Linux内核的buddy allocator，内核会尝试动态组合buddy allocator中的页以满足OBMM的粒度要求。
 4. **mem_allocator_granu=(\\d+)**：用于指定OBMM导出内存的粒度。每个单位的内存物理地址连续，用于满足UMMU硬件的要求。当内存分配器是buddy_highmem时，mem_allocator_granu必须是2的幂，且需要大于PMD_SIZE（4K页场景下为2M）。hugetlb_pmd仅支持PMD_SIZE为唯一粒度（4K页场景下为2M），hugetlb_pud仅支持PUD_SIZE为唯一粒度（4K页场景下为1G）。
 
