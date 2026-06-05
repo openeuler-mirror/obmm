@@ -37,7 +37,9 @@ int obmm_set_ownership(int fd, void *start, void *end, int prot);
 **start**：权限变更的起始虚拟地址，该地址应按照PAGE_SIZE对齐。
 
 **end**：权限变更的终止虚拟地址（该地址本身不在变更范围内），按PAGE_SIZE对齐。
-[start, end) 所表示的地址区间应落在 mmap 映射的地址区间内，且长度大于零。
+[start, end) 所表示的地址区间应落在 mmap 映射的地址区间内，且长度大于零。该区间**允许跨越多个 VMA**，但需满足以下条件：
+  * 跨越的所有 VMA 均为同一 obmm_shmdev 设备的映射
+  * 跨越的地址段在虚拟地址空间中连续
 
 **prot**：目标权限状态。
 
@@ -61,14 +63,20 @@ int obmm_set_ownership(int fd, void *start, void *end, int prot);
 * `EBUSY`:
     * 目标为 PROT_READ：区间内某个PAGE的读权限映射数量达到最大值；
     * 目标为 PROT_WRITE: 区间内某个PAGE的写权限映射数量达到最大值；
-* `EFAULT`: 对应的更新区域 vma not found ;待更新内存区域映射的文件和目标设备不一致；更新区域超出 VMA 范围。
+* `EFAULT`: 对应的更新区域 vma not found；跨VMA操作时地址段不连续或映射的设备不一致；更新区域超出映射范围。
 * `ENOTRECOVERABLE`: 缓存刷新失败。
 
 
 ## 约束 CONSTRAINTS
 
 见 libobmm(3) 所描述的一致性模型。
+
 当前不允许对NC映射的obmm内存更改一致性状态。
+
+跨 VMA 的 ownership 操作需满足以下条件：
+
+* 所跨越的 VMA 均映射自同一 obmm_shmdev 设备（即 fd 参数所对应的设备）
+* 所跨越的地址段在虚拟地址空间中连续
 
 ## 附注 NOTES
 
