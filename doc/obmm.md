@@ -39,7 +39,7 @@ UB memory 对提供方的内存有连续性、缓存属性等方面的要求，�
 
 | 类型 | 申请内存来源 | 申请内存粒度 | UMMU页表粒度配置（支持2M，4M，……，256M \ 最大借出内存为128K * 2 * 页表粒度） | 其他限制 |
 | --- | --- | --- | --- | --- |
-| hugetlb_pmd | hugetlbfs中的pmd粒度大页 | PMD（PAGE_SIZE为4K时，PMD为2M） | 必须配置为2M | 仅支持pmd_mapping == 100%时使用，需要由用户或者kernel cmdline预留pmd大页内存 |
+| hugetlb_pmd | hugetlbfs中的pmd粒度大页 | PMD（4K页为2M，64K页为512M） | 4K页必须配置为2M，64K页可以配置为任意值 | 仅支持pmd_mapping == 100%时使用（64K页需rodata=full），需要由用户或者kernel cmdline预留pmd大页内存 |
 | hugetlb_pud | hugetlbfs中的pud粒度大页 | PUD（PAGE_SIZE为4K时，PUD为1G） | 可以配置为任意值（推荐32M） | 不受pmd_mapping限制，需要由用户或者kernel cmdline预留pud大页内存 |
 | buddy_highmem | 直接从buddy或者使用pfn申请内存 | 通过驱动加载mem_allocator_granu参数配置，必须是UMMU页表粒度的整数倍 | 可以配置为任意值（推荐2M 或者32M） |  pmd_mapping配置的比例为各NUMA可借出内存比例的上限 |
 
@@ -78,6 +78,7 @@ OBMM内核模块依赖以下内核参数：
 ```
 2. 为了申请内存时正确修改内核页表属性，需要配置pmd_mapping参数。
     mempool_allocator配置成buddy_highmem时，需要配置pmd_mapping参数，该参数配置比例的系统内存为最大可借出内存；配置成hugetlb_pmd时，需要配置pmd_mapping=100%。
+    **注意：当PAGE_SIZE为64K时，无需配置pmd_mapping参数**，此时需改用rodata=full参数（见下条第3点）。
     该参数详细说明如下：
 ```
     pmd_mapping=    [ARM64,KNL]
@@ -87,6 +88,13 @@ OBMM内核模块依赖以下内核参数：
             larger than PMD. pmd_mapping specifies the percent of
             memory of each node. pmd_mapping=100% is used for hugetlb
             scenarios, the whole linear mapping isn't large than PMD.
+```
+3. 当PAGE_SIZE为64K时，需配置内核启动参数 `rodata=full` 以使能各内存分配器（buddy_highmem、hugetlb_pmd、hugetlb_pud）。此时PMD_SIZE为512M，无需配置pmd_mapping参数。该参数详细说明如下：
+```
+    rodata=         [KNL,EARLY]
+        on      Mark read-only kernel memory as read-only (default).
+        off     Leave read-only kernel memory writable for debugging.
+        full    Mark read-only kernel memory as read-only.
 ```
 
 ###前置内核模块依赖
@@ -100,8 +108,8 @@ OBMM 内核模块为 `obmm.ko` ，支持下列 4 个内核启动参数：
 
 1. **mempool_size=(\\d+)[KMG]**：用于配置OBMM缓冲内存池的大小，默认为1G。指定OBMM维护的内存池的容量上限。内存池容量会被每个本地NUMA节点均分，例如mempool_size=4G，有4个本地NUMA节点时，OBMM会为每个本地NUMA缓冲至多1G内存。OBMM会动态、异步地从内存源申请释放内存，将缓冲内存池的大小维持在预期大小上下，用于提升内存的借出速度。
 2. **mempool_refill_timeout=(\\d+)**：用于指示本地内存不足触发OBMM缓冲池释放后，OBMM尝试重新扩充内存池的时间间隔，单位为毫秒，默认为30000。OBMM在收到内核内存不足的通知时，会评估是否可通过释放缓冲池的缓冲内存以缓解系统内存不足的问题。如果有缓解效果，OBMM会释放全部内存池内存，并在mempool_refill_timeout毫秒后重新尝试内存池填充。
-3. **mempool_allocator**：用于指定OBMM导出内存时的内存来源。当前支持hugetlb_pmd, hugetlb_pud, buddy_highmem三种内存来源。未指定时，默认为buddy_highmem。hugetlb_pmd和hugetlb_pud表示内存来自Linux hugetlbfs，内存需要在sysfs中手动预留后方可使用。仅当pmd_mapping=100%时，mempool_allocator允许使用hugetlb_pmd。buddy_highmem表示内存来自Linux内核的buddy allocator，内核会尝试动态组合buddy allocator中的页以满足OBMM的粒度要求。
-4. **mem_allocator_granu=(\\d+)**：用于指定OBMM导出内存的粒度。每个单位的内存物理地址连续，用于满足UMMU硬件的要求。当内存分配器是buddy_highmem时，mem_allocator_granu必须是2的幂，且需要大于PMD_SIZE（4K页场景下为2M）。hugetlb_pmd仅支持PMD_SIZE为唯一粒度（4K页场景下为2M），hugetlb_pud仅支持PUD_SIZE为唯一粒度（4K页场景下为1G）。
+3. **mempool_allocator**：用于指定OBMM导出内存时的内存来源。当前支持hugetlb_pmd, hugetlb_pud, buddy_highmem三种内存来源。未指定时，默认为buddy_highmem。hugetlb_pmd和hugetlb_pud表示内存来自Linux hugetlbfs，内存需要在sysfs中手动预留后方可使用。仅当pmd_mapping=100%时（64K页为rodata=full），mempool_allocator允许使用hugetlb_pmd。buddy_highmem表示内存来自Linux内核的buddy allocator，内核会尝试动态组合buddy allocator中的页以满足OBMM的粒度要求。
+4. **mem_allocator_granu=(\\d+)**：用于指定OBMM导出内存的粒度。每个单位的内存物理地址连续，用于满足UMMU硬件的要求。当内存分配器是buddy_highmem时，mem_allocator_granu必须是2的幂，且需要大于2M。hugetlb_pmd仅支持PMD_SIZE为唯一粒度（4K页场景下为2M，64K页场景下为512M），hugetlb_pud仅支持PUD_SIZE为唯一粒度（4K页场景下为1G）。
 
 
 ## OBMM 设备

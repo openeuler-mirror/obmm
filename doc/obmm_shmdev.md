@@ -37,7 +37,7 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 * addr：用户态应用期望的虚拟地址，默认为 hint（内核不保证能从分配到该地址）。一般可置为 NULL。
 * length：映射内存的长度，此参数必须按页大小对齐。
 * prot：映射内存的访问权限。PROT_NONE表示空权限（无映射、无缓存），PROT_READ表示只读权限，PROT_WRITE 和 PROT_READ | PROT_WRITE 表示读写权限。
-* flags：根据使用规范，用户需配置 MAP_SHARED flag，不应配置 MAP_ANONYMOUS flag。MAP_PRIVATE语义上不适合配置，如果用户仍要配置MAP_PRIVATE，请注意访存行为仍和MAP_SHARED一致，进程的写入对其它进程都是可见的。
+* flags：用户需配置 MAP_SHARED flag，不应配置 MAP_ANONYMOUS flag。**不允许配置 MAP_PRIVATE**。OBMM 内存为共享语义，进程的写入对其它进程都是可见的，MAP_PRIVATE 的写时复制（copy-on-write）语义不适用。
 * fd：需为 open(2) 打开 obmm_shmdev 设备所创建的文件描述符
 * offset：映射域段的起始偏移量，此参数必须按页大小对齐。
 
@@ -45,7 +45,7 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 
 mmap 失败时，返回 MAP_FAILED（-1）；成功时，会返回一个虚拟地址。应用可基于该虚拟地址进行 load, store 访问。用户所做的访问必须与当前该段内存的权限一致。如果不一致，可能产生 bus error。
 
-OBMM支持部分映射，同一进程mmap和munmap的范围必须保持一致，不同进程可以使用不同的页范围进行映射。
+OBMM支持部分映射，不同进程可以使用不同的页范围进行映射。关于VMA拆分、部分解除映射等行为规则，详见下方"VMA 管理"章节。
 
 在访问过程中，用户可通过 obmm_set_ownership(3) 切换权限，实现细粒度的数据跨机共享。注意，NC映射不能使用obmm_set_ownership(3)切换权限。
 
@@ -70,7 +70,18 @@ mmap其余参数描述有所变化：
 
 ##### 使用约束
 1. 一个obmm_shmdev不允许混合不同粒度映射。设备首次映射时会记录映射粒度。
-2. 通过PMD方式映射的虚拟地址不支持使用`obmm_set_ownership`接口维护一致性。
+2. 通过PMD方式映射的虚拟地址支持使用`obmm_set_ownership`接口维护一致性。
+
+### VMA 管理
+
+OBMM 映射的 VMA 具有以下行为规则：
+
+* **VMA 拆分（split）**：允许对 OBMM 映射的 VMA 进行拆分操作（如通过 munmap 在映射中间挖洞），拆分后各子 VMA 独立管理。
+* **部分解除映射（partial unmap）**：允许对 OBMM 映射的 VMA 进行部分 munmap，解除映射后剩余区域仍可正常访问。
+* **VMA 合并（merge）**：不允许 OBMM 映射的 VMA 与其他 VMA（包括其他 OBMM 映射的 VMA）进行合并。
+* **mprotect**：不允许对 OBMM 映射的 VMA 调用 mprotect(2) 修改保护属性。
+* **mremap**：不允许对 OBMM 映射的 VMA 调用 mremap(2) 进行重映射。
+* **VMA 属性同步**：VMA 的保护属性（prot）与实际的读写权限保持一致。当通过 obmm_set_ownership(3) 将权限设为 PROT_READ 时，对应 VMA 的 prot 属性也会同步更新为 PROT_READ；设为 PROT_WRITE（或 PROT_READ | PROT_WRITE）时同步为可读写；设为 PROT_NONE 时同步为无权限。
 
 ## 样例
 
