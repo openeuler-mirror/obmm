@@ -45,7 +45,7 @@ mem_id obmm_import(const struct obmm_mem_desc *desc, unsigned long flags, int ba
 | deid      | 提供方提供内存的UB controller的EID，当前仅用于记账 |
 | seid      | 使用方引入内存的UB controller的EID             |
 | scna      | 使用方引入内存的UB controller的CNA地址          |
-| dcna      | 提供方提供内存的UB controller的EID，当前仅用于记账  |
+| dcna      | 提供方提供内存的UB controller的CNA地址，当前仅用于记账  |
 | priv_len  | 私有数据长度                                  |
 | priv      | 私有数据，仅呈现在sysfs中，不影响通路         |
 
