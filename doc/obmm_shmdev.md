@@ -71,7 +71,7 @@ mmap其余参数描述有所变化：
 ##### 使用约束
 1. 一个obmm_shmdev不允许混合不同粒度映射。设备首次映射时会记录映射粒度。
 2. 通过PMD方式映射的虚拟地址支持使用`obmm_set_ownership`接口维护一致性。
-
+3. obmm_shmdev根据VMA的保护属性（prot）判断vma access的访问权限。当前方案，若mmap时配置prot为PROT_WRITE only时，由于缺少PROT_READ属性，不允许进行vma access操作，反映在用户视角则是映射的va不支持使用GDB/ptrace访问。
 ### VMA 管理
 
 OBMM 映射的 VMA 具有以下行为规则：
