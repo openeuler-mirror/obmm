@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2025-2026 Huawei Technologies Co., Ltd. All rights reserved. -->
+
 # obmm_query: 地址查询转换
 
 ## 名称 NAME
@@ -45,6 +47,7 @@ int obmm_query_pa_by_memid(memid id, unsigned long offset, unsigned long *pa);
 
 * `ENOENT`：ID为`memid`的OBMM内存不存在。
 * `EINVAL`：`memid`对应的OBMM内存存在，但是`offset` 越界。
+* `EAGAIN`：该内存正处于在线后端切换（见obmm_switch(4)）的过渡状态。切换间隙会保持到控制方调用 `switch_end` 为止，没有超时上限；调用方稍后重试即可，间隙被遗弃时可用 `switch_end(..., 0)` 关闭。
 
 ## 约束 CONSTRAINTS
 

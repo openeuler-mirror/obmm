@@ -1,8 +1,14 @@
+<!-- Copyright (c) 2025-2026 Huawei Technologies Co., Ltd. All rights reserved. -->
+
 # obmm_shmdev_sysfs: OBMM 内存设备 sysfs
 
 obmm_shmdev sysfs ，为 obmm_shmdev(4) 的 sysfs 文件目录。若一段 OBMM 内存的 memid 为 `${id}`，其sysfs 目录所在的路径为`/sys/devices/obmm/obmm_shmdev${id}/` 。
 
 通过 sysfs 目录下有多个只读文本文件和只读二进制文件。每个文件展示了该内存设备的一项属性。可用于维测与调试，不建议用于控制面功能和性能路径。
+
+## 目录身份与在线切换
+
+若内核支持在线后端切换（见obmm_switch(4)），目录的身份子目录（`import_info/`或`export_info/`）与`type`属性跟随**当前挂接的后端**：切换提交后子目录会跟随互换（如import切换为export后，`import_info/`消失、`export_info/`出现），`type`同步翻转；后端丢失（STRANDED）时回退为创建身份。切换过渡期间（`switch_state`为SWAPPING/AWAIT_READY/FINISHING），身份类属性（`type`、`backend_type`、`import_info/`与`export_info/`下的全部文件）读取返回`-EAGAIN`（重试即可）；其余属性（含`switch_state`、`switch_flush_result`、`priv`等）切换期间可正常读取。
 
 ## 属性总览
 
@@ -63,6 +69,26 @@ obmm_shmdev${id}/
 **allow_mmap**
 类型：文本、十进制数
 描述：`0` 代表内存 obmm_shmdev(4) 字符设备无法通过 mmap(2) 映射，`1` 代表可以通过 mmap 映射。
+
+**switch_state**
+类型：文本、十进制数
+描述：内存设备在线后端切换（见obmm_switch(4)）的状态机值，取值`0`–`4`（IDLE/SWAPPING/AWAIT_READY/FINISHING/STRANDED），各状态含义见obmm_switch(4)。
+
+**switch_flush_result**
+类型：文本、十进制数
+描述：最近一次记录的切换收尾阶段数据回刷或后端销毁失败的负errno，无失败为`0`；每次switch_begin时清零。用于维测，见obmm_switch(4)。
+
+**backend_type**
+类型：文本、十进制数
+描述：当前挂接的后端类型：`0` import（远端引入内存）、`1` export pool（本地导出内存）、`2` export from user（用户进程导出内存）、`-1` 无后端（切换STRANDED终态或拆除中）。
+
+**mmap_granu**
+类型：文本、十进制数
+描述：设备当前的映射粒度：`0` 未映射过、`1` PAGE（4K）、`2` PMD（2M）。设备首次映射时记录，不允许混用粒度。
+
+**mmap_mode**
+类型：文本、十进制数
+描述：设备当前的映射缓存模式：`0` 未映射过、`1` NORMAL（cacheable）、`2` OSYNC（non-cacheable，打开设备时指定了O_SYNC）。
 
 ## 提供方信息
 

@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2025-2026 Huawei Technologies Co., Ltd. All rights reserved. -->
+
 # libobmm: OBMM 用户态库
 
 OBMM 是在单机内管理远端内存的基础组件，可以将本地内存导出（export），将其他系统导出的内存引入（import）。export、import 两方的 OBMM 组件依次完成数据通路配置后，import 侧的应用可以像使用本端内存一样，使用 `load` 、`store` 访问远端内存。
@@ -20,6 +22,16 @@ OBMM 组件包含用户态库 libobmm.so 和内核模块 obmm.ko（详见obmm(4)
 | ------------- | ------------------ |
 | obmm_import   | 从远端引入内存     |
 | obmm_unimport | 取消远端内存的引入 |
+
+### 在线切换内存后端
+
+| API                     | 功能                                                 |
+| ----------------------- | ---------------------------------------------------- |
+| obmm_switch_begin_import  | 将内存设备的后端在线切换为一段新的远端内存           |
+| obmm_switch_begin_export | 将内存设备的后端在线切换为一段新的本地导出内存       |
+| obmm_switch_end          | 提交或放弃一次在线切换                               |
+
+详见 obmm_switch(4)。
 
 ### 预上线内存
 

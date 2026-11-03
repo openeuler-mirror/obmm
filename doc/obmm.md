@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2025-2026 Huawei Technologies Co., Ltd. All rights reserved. -->
+
 # obmm: 基于所有权的内存管理组件
 
 OBMM 是在单机内管理远端内存的基础组件，可以将本地内存导出（export），将其他系统导出的内存引入（import）。export、import 两端的 OBMM 组件依次完成数据通路配置后，import 侧的应用可以像使用本端内存一样，使用 `load` 、`store` 访问远端内存。
@@ -117,3 +119,5 @@ OBMM 内核模块为 `obmm.ko` ，支持下列 4 个内核启动参数：
 ## OBMM 设备
 
 OBMM 内核模块插入后，会生成 `/dev/obmm` 设备。用户应通过 libobmm(3) 描述的函数接口来调用 OBMM 功能，不建议直接操作该设备。
+
+除导出、引入等内存设备的增删请求外，`/dev/obmm` 还承载内存设备的在线后端切换请求（OBMM_CMD_SWITCH_BEGIN / OBMM_CMD_SWITCH_END ioctl，需要 CAP_SYS_ADMIN 权限），用于在不销毁内存设备的前提下整体更换其承载内存，详见 obmm_switch(4)。

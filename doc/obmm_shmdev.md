@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2025-2026 Huawei Technologies Co., Ltd. All rights reserved. -->
+
 # obmm_shmdev: OBMM 内存设备
 
 obmm_shmdev 是 OBMM 为管理远端内存创建的字符设备。若一段 OBMM 内存的 memid 为 `${id}`，其设备所在的路径为`/dev/obmm_shmdev${id}` 。
@@ -72,6 +74,26 @@ mmap其余参数描述有所变化：
 1. 一个obmm_shmdev不允许混合不同粒度映射。设备首次映射时会记录映射粒度。
 2. 通过PMD方式映射的虚拟地址支持使用`obmm_set_ownership`接口维护一致性。
 3. obmm_shmdev根据VMA的保护属性（prot）判断vma access的访问权限。当前方案，若mmap时配置prot为PROT_WRITE only时，由于缺少PROT_READ属性，不允许进行vma access操作，反映在用户视角则是映射的va不支持使用GDB/ptrace访问。
+4. 缺页重建（如在线后端切换提交后的重映射，见obmm_switch(4)）依赖透明大页未被关闭（`/sys/kernel/mm/transparent_hugepage/enabled`为madvise或always；VM_HUGEPAGE由内核自动置位，=madvise时无需应用显式madvise(2)）。配置为never（或应用显式MADV_NOHUGEPAGE）时，重建退化为4K页；mmap时的eager安装（初始映射与切换间隙映射）不受影响。
+
+#### 切换间隙映射（SWITCH_OLD / SWITCH_NEW）
+
+内存设备在线后端切换（见obmm_switch(4)）的间隙期间，mmap(2) 可通过offset高位标志同时映射新旧两个后端，用于数据迁移：
+
+```c
+#define OBMM_MMAP_FLAG_SWITCH_OLD  (1UL << 61)   /* 映射旧后端 */
+#define OBMM_MMAP_FLAG_SWITCH_NEW  (1UL << 60)   /* 映射新（当前）后端 */
+```
+
+使用约束：
+1. 两个标志仅在切换间隙（switch_state 为 AWAIT_READY）内合法，其余状态返回 -EINVAL；二者互斥。
+2. SWITCH_OLD 要求切换以 OBMM_SWITCH_FLAG_KEEP_OLD_ALIVE 发起。
+3. 两个标志可与 OBMM_MMAP_FLAG_HUGETLB_PMD 组合使用。
+4. 间隙内的普通映射（不带上述标志）允许创建，其页表安装会延迟到切换完成之后。
+5. 间隙内对切换映射执行 madvise 等清页操作后，该映射退化为普通映射语义，后续访存落在切换结束后存活的后端上。
+
+切换期间 obmm_set_ownership(3) 返回 -EAGAIN；销毁接口返回 -EBUSY。完整的切换协议、errno 与数据迁移样例见 obmm_switch(4)。
+
 ### VMA 管理
 
 OBMM 映射的 VMA 具有以下行为规则：

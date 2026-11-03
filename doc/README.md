@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2025-2026 Huawei Technologies Co., Ltd. All rights reserved. -->
+
 # OBMM 文档
 
 本目录存放 OBMM 文档，和主线代码保持同步。
@@ -22,6 +24,7 @@
 | obmm_unpreimport.md   | `obmm_unpreimport()` 接口说明                                |
 | obmm_set_ownership.md | `obmm_set_ownership()` 接口说明                              |
 | obmm_query.md         | `obmm_query_memid_by_pa()`, `obmm_query_pa_by_memid()` 接口说明 |
+| obmm_switch.md        | `obmm_switch_begin_import()`, `obmm_switch_begin_export()`, `obmm_switch_end()` 接口与设备级在线切换说明 |
 
 
 设备文档
@@ -30,6 +33,7 @@
 | -------------- | ------------------------------------- |
 | obmm.md        | obmm.ko 参数说明与 /dev/obmm 设备说明 |
 | obmm_shmdev.md | obmm_shmdev\${mem_id} 设备使用说明    |
+| obmm_switch.md | 内存设备在线后端切换（switch_begin/switch_end、切换间隙映射）使用说明 |
 
 
 sysfs 文档

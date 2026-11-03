@@ -131,13 +131,13 @@ int obmm_switch_begin_import(mem_id id, unsigned long flags,
                              const void *priv, uint16_t priv_len);
 
 /*
- * Begin a switch to a new local export-pool target. desc doubles as the
- * grantee identity input (deid/seid, resolved as in obmm_export()) and
- * the output holder: on success desc->tokenid and desc->addr (uba)
- * carry the new UMMU credentials. They must not be distributed to a
- * remote importer before the switch is committed by
- * obmm_switch_end(id, 1). desc->priv/priv_len are ignored here; the new
- * backend's private data comes solely from priv/priv_len.
+ * Begin a switch to a new local export-pool target. desc supplies the
+ * vendor information and pxm (resolved as in obmm_export()); its seid/deid
+ * are accepted and ignored by the kernel, and so is priv/priv_len -- the
+ * new backend's private data comes solely from priv/priv_len. desc is also
+ * the output holder: on success desc->tokenid and desc->addr (uba) carry
+ * the new UMMU credentials. They must not be distributed to a remote
+ * importer before the switch is committed by obmm_switch_end(id, 1).
  */
 int obmm_switch_begin_export(mem_id id, unsigned long flags,
                              const struct obmm_switch_export_target *target,
