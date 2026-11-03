@@ -505,3 +505,180 @@ __attribute__((visibility("default"))) int obmm_unpreimport(const struct obmm_pr
     OBMM_LOG_SUCCESS("numa_id=%d pa=%#lx", preimport_info->numa_id, preimport_info->pa);
     return 0;
 }
+
+static int switch_begin_init(mem_id id, unsigned long flags, uint8_t type,
+                             const void *priv, uint16_t priv_len,
+                             struct obmm_cmd_switch_begin *cmd)
+{
+    int fd;
+
+    if (id == OBMM_INVALID_MEMID ||
+        priv_len > OBMM_MAX_PRIV_LEN || (priv == NULL && priv_len != 0)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    fd = obmm_dev_get_fd();
+    if (fd < 0)
+        return -1;
+
+    memset(cmd, 0, sizeof(*cmd));
+    cmd->mem_id = id;
+    cmd->flags = flags;
+    cmd->target_type = type;
+    cmd->priv_len = priv_len;
+    cmd->priv = priv;
+    return fd;
+}
+
+__attribute__((visibility("default"))) int obmm_switch_begin_import(mem_id id, unsigned long flags,
+                             const struct obmm_switch_import_target *target,
+                             const void *priv, uint16_t priv_len)
+{
+    struct obmm_cmd_switch_begin cmd;
+    int fd, ret;
+
+    if (target == NULL) {
+        OBMM_LOG_FAIL("target is NULL");
+        errno = EINVAL;
+        return -1;
+    }
+
+    OBMM_LOG_START("id=%lu flags=%#lx pa=%#llx scna=%#x deid=" EID_FMT64
+                   " base_dist=%d priv_len=%u",
+                   id, flags, (unsigned long long)target->pa, target->scna,
+                   EID_ARGS64(target->deid), target->base_dist, priv_len);
+
+    if (target->base_dist < 0 || target->base_dist > UINT8_MAX) {
+        errno = EINVAL;
+        OBMM_LOG_FAIL("invalid target");
+        return -1;
+    }
+
+    ret = vendor_check_import_target(target->seid, target->scna);
+    if (ret) {
+        OBMM_LOG_FAIL("seid/scna mismatch");
+        return -1;
+    }
+
+    fd = switch_begin_init(id, flags, OBMM_SWITCH_TARGET_IMPORT,
+                           priv, priv_len, &cmd);
+    if (fd < 0) {
+        OBMM_LOG_FAIL("failed to init switch command");
+        return -1;
+    }
+
+    cmd.imp.new_pa = target->pa;
+    cmd.imp.new_scna = target->scna;
+    cmd.imp.new_dcna = target->dcna;
+    memcpy(cmd.imp.new_seid, target->seid, sizeof(cmd.imp.new_seid));
+    memcpy(cmd.imp.new_deid, target->deid, sizeof(cmd.imp.new_deid));
+    cmd.imp.base_dist = target->base_dist;
+
+    ret = ioctl(fd, OBMM_CMD_SWITCH_BEGIN, &cmd);
+    if (ret < 0) {
+        OBMM_LOG_FAIL("operation failed");
+        return -1;
+    }
+
+    OBMM_LOG_SUCCESS("switch gap opened");
+    return 0;
+}
+
+__attribute__((visibility("default"))) int obmm_switch_begin_export(mem_id id, unsigned long flags,
+                             const struct obmm_switch_export_target *target,
+                             struct obmm_mem_desc *desc,
+                             const void *priv, uint16_t priv_len)
+{
+    struct obmm_cmd_switch_begin cmd;
+    int fd, ret, errsv;
+
+    if (target == NULL || desc == NULL) {
+        OBMM_LOG_FAIL("target or desc is NULL");
+        errno = EINVAL;
+        return -1;
+    }
+
+    OBMM_LOG_START("id=%lu flags=%#lx node_count=%d deid=" EID_FMT64
+                   " priv_len=%u",
+                   id, flags, target->node_count,
+                   EID_ARGS64(desc->deid), priv_len);
+
+    if (target->node_count <= 0 || target->node_count > OBMM_MAX_LOCAL_NUMA_NODES) {
+        errno = EINVAL;
+        OBMM_LOG_FAIL("invalid target");
+        return -1;
+    }
+
+    fd = switch_begin_init(id, flags, OBMM_SWITCH_TARGET_EXPORT_POOLED,
+                           priv, priv_len, &cmd);
+    if (fd < 0) {
+        OBMM_LOG_FAIL("failed to init switch command");
+        return -1;
+    }
+
+    memcpy(cmd.exp.size, target->size, sizeof(uint64_t) * target->node_count);
+    cmd.exp.node_count = target->node_count;
+    cmd.exp.export_flags = target->export_flags;
+    memcpy(cmd.exp.seid, desc->seid, sizeof(cmd.exp.seid));
+    memcpy(cmd.exp.deid, desc->deid, sizeof(cmd.exp.deid));
+
+    ret = vendor_adapt_export(desc, &cmd.exp.vendor_info,
+                              &cmd.exp.vendor_len, &cmd.exp.pxm_numa);
+    if (ret) {
+        /* vendor_adapt_export sets errno itself */
+        OBMM_LOG_FAIL("vendor adapt failed");
+        return -1;
+    }
+
+    ret = ioctl(fd, OBMM_CMD_SWITCH_BEGIN, &cmd);
+    errsv = errno;
+    free_vendor_info((void *)cmd.exp.vendor_info);
+    errno = errsv;
+    if (ret < 0) {
+        OBMM_LOG_FAIL("operation failed");
+        return -1;
+    }
+
+    desc->tokenid = cmd.exp.tokenid;
+    desc->addr = cmd.exp.uba;
+
+    OBMM_LOG_SUCCESS("switch gap opened, tokenid=%u uba=%#llx",
+                     desc->tokenid, (unsigned long long)desc->addr);
+    return 0;
+}
+
+__attribute__((visibility("default"))) int obmm_switch_end(mem_id id, int success)
+{
+    struct obmm_cmd_switch_end cmd;
+    int fd, ret;
+
+    OBMM_LOG_START("id=%lu success=%d", id, success);
+
+    if (id == OBMM_INVALID_MEMID) {
+        errno = EINVAL;
+        OBMM_LOG_FAIL("invalid memid");
+        return -1;
+    }
+
+    fd = obmm_dev_get_fd();
+    if (fd < 0) {
+        OBMM_LOG_FAIL("failed to get device fd");
+        return -1;
+    }
+
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.mem_id = id;
+    cmd.success = success ? 1 : 0;
+
+    ret = ioctl(fd, OBMM_CMD_SWITCH_END, &cmd);
+    if (ret < 0) {
+        /* EAGAIN (racing the finisher) is retry policy owned by the
+         * caller, surfaced verbatim like every other errno */
+        OBMM_LOG_FAIL("operation failed");
+        return -1;
+    }
+
+    OBMM_LOG_SUCCESS("switch %s", cmd.success ? "committed" : "aborted");
+    return 0;
+}
