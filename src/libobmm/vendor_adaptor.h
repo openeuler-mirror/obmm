@@ -27,6 +27,10 @@ void free_vendor_info(void *vendor_info);
 int vendor_fixup_import_cmd(struct obmm_cmd_import *cmd);
 void vendor_cleanup_import_cmd(struct obmm_cmd_import *cmd);
 
+/* seid/scna cross-check for a switch import target: the cmd-bound
+ * fixups pass a whole cmd; this passes the switch target's fields */
+int vendor_check_import_target(const uint8_t seid[16], uint32_t scna);
+
 int vendor_fixup_preimport_cmd(struct obmm_cmd_preimport *cmd);
 void vendor_cleanup_preimport_cmd(struct obmm_cmd_preimport *cmd);
 

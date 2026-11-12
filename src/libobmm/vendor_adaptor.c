@@ -306,3 +306,8 @@ void vendor_cleanup_preimport_cmd(struct obmm_cmd_preimport *cmd)
 {
     (void)cmd;
 }
+
+int vendor_check_import_target(const uint8_t seid[16], uint32_t scna)
+{
+    return validate_cna_match(seid, scna);
+}
