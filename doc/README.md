@@ -25,6 +25,7 @@
 | obmm_set_ownership.md | `obmm_set_ownership()` 接口说明                              |
 | obmm_query.md         | `obmm_query_memid_by_pa()`, `obmm_query_pa_by_memid()` 接口说明 |
 | obmm_switch.md        | `obmm_switch_begin_import()`, `obmm_switch_begin_export()`, `obmm_switch_end()` 接口与设备级在线切换说明 |
+| libobmm-accel.md | libobmm-accel 接口总览、NC 感知多线程拷贝 memcpy_nc_mt 说明 |
 
 
 设备文档
