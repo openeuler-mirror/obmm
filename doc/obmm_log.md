@@ -6,9 +6,11 @@
 
 ## 描述 DESCRIPTION
 
-OBMM库内置了日志记录功能，自动记录所有export/import/unexport/unimport等操作的详细信息，包括操作参数、执行结果、耗时等。本文档说明如何查看和使用OBMM日志进行问题诊断和性能分析。
+OBMM库内置了日志记录功能，会在部分接口被调用时自动记录详细信息，包括操作参数、执行结果、耗时等。当前实际会产生日志的接口包括：`obmm_export`、`obmm_export_useraddr`、`obmm_import`、`obmm_unexport`、`obmm_unimport`、`obmm_preimport`、`obmm_unpreimport`、`obmm_switch_begin_import`、`obmm_switch_begin_export`、`obmm_switch_end`。本文档说明如何查看和使用OBMM日志进行问题诊断和性能分析。
 
-**注意**：日志功能由OBMM库内部自动调用，用户无需在代码中添加任何日志相关代码。
+**注意**：`obmm_set_ownership`、`obmm_query_memid_by_pa`、`obmm_query_pa_by_memid` 当前**不会**产生任何日志，排查所有权变更或地址查询问题时不能依赖 syslog。
+
+**注意**：日志功能由OBMM库内部自动调用，用户无需在代码中添加任何日志相关代码；库中也没有环境变量或配置项可以调整日志级别。
 
 ## 日志位置 LOG LOCATION
 
@@ -45,32 +47,34 @@ tail -f /var/log/syslog | grep OBMM
 
 ### 日志级别
 
-OBMM使用以下syslog级别：
+OBMM当前实际只会输出以下两个syslog级别：
 
-* **ERR (错误)**：操作失败，包含错误原因
-* **WARNING (警告)**：警告信息
-* **INFO (信息)**：正常操作流程，包括操作开始和成功
-* **DEBUG (调试)**：详细调试信息
+* **ERR (错误)**：操作失败（`FAILED` 日志），包含错误原因
+* **INFO (信息)**：正常操作流程，包括操作开始和成功（`SUCCESS` 日志）
+
+库中虽然定义了 WARNING/DEBUG 宏（`OBMM_LOGW`/`OBMM_LOGD`），但当前没有任何调用点，也没有环境变量或配置项可以开启，因此实际不会产生 WARNING/DEBUG 级别的日志。
 
 ### 日志字段说明
 
 #### 操作开始日志
 
-当OBMM操作开始时，记录操作参数：
+当OBMM操作开始时，记录操作参数。开始日志没有 `START` 字面量，只有 `[OBMM] <函数名>: ` 前缀加各接口自己的字段：
 
 ```
-[OBMM] obmm_export: START pid=0 length=0x200000 deid=0x1234:0x5678 priv_len=0
-[OBMM] obmm_import: START scna=0x1 {pa=0x100000000 length=0x200000} flags=0x0 nid=0 base_dist=0 seid=0xabcd:0xefgh priv_len=0
+[OBMM] obmm_export: len(sizes)=16 sizes={ [0]:0x200000} flags=0x0 deid=0x00000000001234:0x00000000005678 priv_len=0
+[OBMM] obmm_export_useraddr: pid=0 length=0x200000 priv_len=0 deid=0x00000000001234:0x00000000005678
+[OBMM] obmm_import: scna=0x1 {pa=0x100000000 length=0x200000} flags=0x0 nid=0 base_dist=0 seid=0x0000000000abcd:0x0000000000ef01 priv_len=0
 ```
-具体字段参见各接口文档。
+
+注意 `obmm_export` 与 `obmm_export_useraddr` 的开始日志字段不同：前者按 NUMA 节点列出 `sizes`，后者记录 `pid` 和 `length`。其余接口的具体字段参见各接口文档。
 
 #### 操作成功日志
 
-操作成功时，记录返回值和耗时：
+操作成功时，记录耗时和返回值。`elapsed` 字段位于最前面，之后才是各接口的返回值字段：
 
 ```
-[OBMM] obmm_export: SUCCESS, mem_id=1, elapsed=15ms
-[OBMM] obmm_import: SUCCESS, mem_id=2, elapsed=8ms
+[OBMM] obmm_export: SUCCESS, elapsed=15ms, mem_id=1
+[OBMM] obmm_import: SUCCESS, elapsed=8ms, mem_id=2
 ```
 
 **字段说明**：
