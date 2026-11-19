@@ -34,9 +34,9 @@ int obmm_set_ownership(int fd, void *start, void *end, int prot);
 
 **fd**：obmm_shmdev(4) 内存字符设备的文件描述符。
 
-**start**：权限变更的起始虚拟地址，该地址应按照PAGE_SIZE对齐。
+**start**：权限变更的起始虚拟地址，该地址应按映射的粒度对齐：普通 mmap 映射为 PAGE_SIZE，使用 `OBMM_MMAP_FLAG_HUGETLB_PMD` 的映射为 PMD_SIZE（4K 页系统为 2MB）。映射粒度在首次 mmap 时确定并冻结，详见 obmm_shmdev(4) 的 PMD 映射章节。
 
-**end**：权限变更的终止虚拟地址（该地址本身不在变更范围内），按PAGE_SIZE对齐。
+**end**：权限变更的终止虚拟地址（该地址本身不在变更范围内），与 `start` 相同，按映射粒度对齐（普通 mmap 为 PAGE_SIZE，PMD 映射为 PMD_SIZE）。
 [start, end) 所表示的地址区间应落在 mmap 映射的地址区间内，且长度大于零。该区间**允许跨越多个 VMA**，但需满足以下条件：
   * 跨越的所有 VMA 均为同一 obmm_shmdev 设备的映射
   * 跨越的地址段在虚拟地址空间中连续
@@ -58,13 +58,17 @@ int obmm_set_ownership(int fd, void *start, void *end, int prot);
 故障码对应的部分情形如下：
 
 * `EINVAL`: 
-    * 目标权限只有 PROT_NONE 、 PROT_READ 和 PROT_WRITE；
-    * 更新操作非法：该映射为 non-cacheable 映射;起始、终止地址未对齐 PAGE_SIZE；start < end。
-* `EBUSY`:
-    * 目标为 PROT_READ：区间内某个PAGE的读权限映射数量达到最大值；
-    * 目标为 PROT_WRITE: 区间内某个PAGE的写权限映射数量达到最大值；
+    * 目标权限不是 PROT_NONE、PROT_READ、PROT_WRITE 之一（libobmm 在本地校验，不进入内核）；
+    * 更新操作非法：该映射为 non-cacheable 映射；起始、终止地址未按映射粒度对齐（普通映射为 PAGE_SIZE，PMD 映射为 PMD_SIZE）；start >= end（即区间长度不大于零）。
+* `EPERM`: 文件描述符的打开模式与目标权限不匹配。例如以 O_RDONLY 打开的 obmm_shmdev fd 不能把区间设为包含写权限；通常应以 O_RDWR 打开。
+* `EOVERFLOW`:
+    * 目标为 PROT_READ：区间内某个 ownership 粒度的读权限映射数量达到最大值（U16_MAX）；
+    * 目标为 PROT_WRITE: 区间内某个 ownership 粒度的写权限映射数量达到最大值（U16_MAX）。
+    * 计数粒度为 OBMM ownership 粒度：普通映射为 PAGE，PMD 映射为 PMD。
 * `EFAULT`: 对应的更新区域 vma not found；跨VMA操作时地址段不连续或映射的设备不一致；更新区域超出映射范围。
-* `ENOTRECOVERABLE`: 缓存刷新失败。
+* `EAGAIN`: 内存设备正处于在线后端切换的过渡状态（SWAPPING/AWAIT_READY/FINISHING），见 obmm_switch(3) 的“切换间隙内的其它接口行为”表。可等待切换结束后重试。
+* `EIO`: 内存设备处于 STRANDED 状态（切换已放弃且无可用后端），见 obmm_switch(3) 的“切换间隙内的其它接口行为”表。
+* 缓存刷新失败：内核原样透传底层缓存维护接口的错误码，例如维护等待超时返回 `ETIMEDOUT`，底层不支持该维护操作时可能返回 `EOPNOTSUPP`；硬件竞争产生的 `EBUSY` 由内核内部重试，不会返回给调用方。
 
 
 ## 约束 CONSTRAINTS
