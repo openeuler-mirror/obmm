@@ -26,7 +26,7 @@ int open(const char *pathname, int flags, ...
 在操作 obmm_shmdev 时，flags 可以影响 shmdev 的下列行为：
 
 * 操作权限：O_RDONLY 代表请求只读权限，O_WRONLY 代表请求只写权限（当前无法基于此flag做映射），O_RDWR 代表请求读写权限，三者配置仅配置一项。
-* 同步模式：在 flags 中对 O_SYNC 置位时，使用类似同步IO的语义，远端内存将被以 non-cacheable 方式映射；O_SYNC 未置位时，远端内存将被 cacheable 方式映射。如果芯片对物理地址段的映射模式有限制，O_SYNC 的配置应与之匹配。
+* 同步模式：在 flags 中对 O_SYNC 置位时，使用类似同步IO的语义，远端内存将被以 non-cacheable（NC）方式映射；O_SYNC 未置位时，远端内存将被 cacheable（CC）方式映射。cacheability 在 open(2) 阶段即按内存设备的后端能力（promised_cap）进行校验：请求 CC 而设备未承诺 CACHEABLE 能力、或请求 NC 而设备未承诺 NONCACHEABLE 能力时，open(2) 直接返回 -EPERM（即使调用方只打算执行 ioctl、不进行 mmap 也会失败）。cacheability 是设备级属性，在设备仍有映射期间保持冻结，CC 与 NC 不能同时并存；最后一个映射解除后模式重置、可重新选择（仍受后端能力校验）。
 
 ### mmap
 
@@ -43,7 +43,7 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 * fd：需为 open(2) 打开 obmm_shmdev 设备所创建的文件描述符
 * offset：映射域段的起始偏移量，此参数必须按页大小对齐。
 
-此外，如果fd在打开时指定了O_SYNC的flag，那么该次mmap会以NC的方式进行映射。此时，prot最终会呈现为NC+PROT_NONE/PROT_READ/PROT_WRITE的模式。该映射模式下不允许用户进行一致性变更；且不允许与CC映射的方式混用。
+此外，如果fd在打开时指定了O_SYNC的flag，那么该次mmap会以NC的方式进行映射。此时，prot为PROT_READ或PROT_WRITE（PROT_READ | PROT_WRITE）时最终会呈现为 NC + 对应访问权限；PROT_NONE 始终是无权限（PAGE_NONE），不携带 NC 属性。NC 映射的权限必须在 mmap 时通过 prot 一次性指定，之后不允许用户进行一致性或权限变更；且不允许与CC映射的方式混用（混用时 mmap 返回 -EPERM）。
 
 mmap 失败时，返回 MAP_FAILED（-1）；成功时，会返回一个虚拟地址。应用可基于该虚拟地址进行 load, store 访问。用户所做的访问必须与当前该段内存的权限一致。如果不一致，可能产生 bus error。
 
@@ -54,7 +54,7 @@ OBMM支持部分映射，不同进程可以使用不同的页范围进行映射�
 映射时，应用还需要满足以下限制：
 
 * obmm_shmdev 对应的内存具备 allow_mmap 属性：allow_mmap 属性由创建 OBMM 内存设备的 flags（ *OBMM_EXPORT_FLAG_ALLOW_MMAP* 或 *OBMM_IMPORT_FLAG_ALLOW_MMAP*） 配置。
-* 对每一个 cacheable 映射的页，obmm同时允许最多2^16-1个写权限访问者，2^16-1个读权限访问者进行映射以及任意数量的空权限映射；没有 ownership 概念的 non-cacheable 页不受前述限制。
+* 每个 cacheable 的 ownership 条目（PAGE 粒度映射为页，PMD 粒度映射为 2MB）最多允许 2^16-1 个访问者进行映射，空权限映射不受此限制。写权限访问者会同时占用一个写名额和一个读名额，因此写者达到上限时读者名额也已耗尽，二者不是相互独立的配额；没有 ownership 概念的 non-cacheable 页不受前述限制。
 * 进程实际的映射数上限还受内核文件描述符上限、进程映射数量上限等配置的制约，不仅由 OBMM 的状态上限决定。
 
 当 obmm_shmdev 设备被打开或 mmap 时，内存设备均无法销毁。销毁内存设备时，用户应先解除映射，关闭文件描述符。
@@ -64,21 +64,22 @@ obmm_shmdev字符设备mmap提供PMD映射方式，通过增加映射粒度来�
 
 ##### 使用方式
 `#define OBMM_MMAP_FLAG_HUGETLB_PMD (1UL << 63)`
-在mmap时，通过指定偏移为(`OBMM_MAP_FLAG_HUGETLB_PMD` | offset)实现指定PMD映射的效果。
+在mmap时，通过指定偏移为(`OBMM_MMAP_FLAG_HUGETLB_PMD` | offset)实现指定PMD映射的效果。
 
 mmap其余参数描述有所变化：
-* addr：置为 NULL时由内核申请PMD_SIZE对齐的虚拟地址，不为NULL时则以用户传入值为引导值，内核自动调整到PMD_SIZE对齐。
+* addr：建议置为 NULL，由内核分配 PMD_SIZE 对齐的虚拟地址；若传入非 NULL 的 hint，调用方必须自行保证该地址为 PMD_SIZE 对齐，否则 mmap 返回 -EINVAL（内核仅在自行选址时做 PMD 对齐，hint 被直接采用时不会调整）。
 * length：映射内存的长度，此参数必须按PMD_SIZE大小对齐。
+* offset：去掉标志位后的数据偏移必须按 PMD_SIZE 对齐，否则 mmap 返回 -EINVAL。
 
 ##### 使用约束
 1. 一个obmm_shmdev不允许混合不同粒度映射。设备首次映射时会记录映射粒度。
-2. 通过PMD方式映射的虚拟地址支持使用`obmm_set_ownership`接口维护一致性。
-3. obmm_shmdev根据VMA的保护属性（prot）判断vma access的访问权限。当前方案，若mmap时配置prot为PROT_WRITE only时，由于缺少PROT_READ属性，不允许进行vma access操作，反映在用户视角则是映射的va不支持使用GDB/ptrace访问。
-4. 缺页重建（如在线后端切换提交后的重映射，见obmm_switch(4)）依赖透明大页未被关闭（`/sys/kernel/mm/transparent_hugepage/enabled`为madvise或always；VM_HUGEPAGE由内核自动置位，=madvise时无需应用显式madvise(2)）。配置为never（或应用显式MADV_NOHUGEPAGE）时，重建退化为4K页；mmap时的eager安装（初始映射与切换间隙映射）不受影响。
+2. 通过PMD方式映射的虚拟地址支持使用`obmm_set_ownership`接口维护一致性。此时每次调用的 start/end 也必须按 PMD_SIZE 对齐，否则返回 -EINVAL。
+3. obmm_shmdev根据VMA的保护属性（prot）判断vma access的访问权限。PROT_WRITE-only 映射同样支持 ptrace/GDB 访问：读访问要求 vm_flags 中 VM_READ 或 VM_WRITE 置位，写访问要求 VM_WRITE 置位。
+4. 缺页重建与透明大页（THP）的运行时配置无关。映射一律在缺页时安装：驱动按 mmap 粒度（mmap_granu）、VMA 的 PMD 对齐性以及后端物理地址连续性决定安装 PMD 叶子还是 PTE，不读取 `/sys/kernel/mm/transparent_hugepage/enabled` 的状态，也不设置或依赖 VM_HUGEPAGE；`never` 或应用显式 `MADV_NOHUGEPAGE` 都不会使重建退化为 4K 页。透明大页仅是内核编译期依赖（CONFIG_TRANSPARENT_HUGEPAGE）。
 
 #### 切换间隙映射（SWITCH_OLD / SWITCH_NEW）
 
-内存设备在线后端切换（见obmm_switch(4)）的间隙期间，mmap(2) 可通过offset高位标志同时映射新旧两个后端，用于数据迁移：
+内存设备在线后端切换（见obmm_switch(3)）的间隙期间，mmap(2) 可通过offset高位标志同时映射新旧两个后端，用于数据迁移：
 
 ```c
 #define OBMM_MMAP_FLAG_SWITCH_OLD  (1UL << 61)   /* 映射旧后端 */
@@ -90,16 +91,16 @@ mmap其余参数描述有所变化：
 2. SWITCH_OLD 要求切换以 OBMM_SWITCH_FLAG_KEEP_OLD_ALIVE 发起。
 3. 两个标志可与 OBMM_MMAP_FLAG_HUGETLB_PMD 组合使用。
 4. 间隙内的普通映射（不带上述标志）允许创建，其页表安装会延迟到切换完成之后。
-5. 间隙内对切换映射执行 madvise 等清页操作后，该映射退化为普通映射语义，后续访存落在切换结束后存活的后端上。
+5. 对 OBMM 映射（包括切换间隙映射）执行 MADV_DONTNEED 等清页操作会返回 -EINVAL（VMA 带 VM_PFNMAP/VM_LOCKED），不会清页，也不会改变映射语义。SWITCH_OLD/SWITCH_NEW 的作用域仅持续到当前切换间隙结束：switch_end 之后重新缺页将落到存活的后端，而不是当初映射的那个后端。
 
-切换期间 obmm_set_ownership(3) 返回 -EAGAIN；销毁接口返回 -EBUSY。完整的切换协议、errno 与数据迁移样例见 obmm_switch(4)。
+切换期间 obmm_set_ownership(3) 返回 -EAGAIN；销毁接口返回 -EBUSY。完整的切换协议、errno 与数据迁移样例见 obmm_switch(3)。
 
 ### VMA 管理
 
 OBMM 映射的 VMA 具有以下行为规则：
 
-* **VMA 拆分（split）**：允许对 OBMM 映射的 VMA 进行拆分操作（如通过 munmap 在映射中间挖洞），拆分后各子 VMA 独立管理。
-* **部分解除映射（partial unmap）**：允许对 OBMM 映射的 VMA 进行部分 munmap，解除映射后剩余区域仍可正常访问。
+* **VMA 拆分（split）**：允许对 OBMM 映射的 VMA 进行拆分操作（如通过 munmap 在映射中间挖洞），拆分后各子 VMA 独立管理。拆分地址必须按映射粒度对齐：PAGE 粒度映射按 PAGE_SIZE 对齐，PMD 粒度映射按 PMD_SIZE 对齐；未对齐的拆分（以及对应的 munmap）返回 -EINVAL。
+* **部分解除映射（partial unmap）**：允许对 OBMM 映射的 VMA 进行部分 munmap，解除映射后剩余区域仍可正常访问。与拆分相同，解除边界必须按映射粒度对齐（PAGE 粒度按 PAGE_SIZE，PMD 粒度按 PMD_SIZE），否则 munmap 返回 -EINVAL。
 * **VMA 合并（merge）**：不允许 OBMM 映射的 VMA 与其他 VMA（包括其他 OBMM 映射的 VMA）进行合并。
 * **mprotect**：不允许对 OBMM 映射的 VMA 调用 mprotect(2) 修改保护属性。
 * **mremap**：不允许对 OBMM 映射的 VMA 调用 mremap(2) 进行重映射。
@@ -208,8 +209,11 @@ int memdev_demo(mem_id id, size_t size)
 		exit(EXIT_FAILURE);
 	}
 
-	/* Map the memory device with NONE access right. */
-	ptr = mmap(NULL, size, PROT_NONE, MAP_SHARED, fd, OBMM_MMAP_FLAG_HUGETLB_PMD);
+	/* NC mappings must request their access rights at mmap time; the prot
+	 * cannot be changed later by obmm_set_ownership().
+	 */
+	ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd,
+		   OBMM_MMAP_FLAG_HUGETLB_PMD);
 	if (ptr == MAP_FAILED) {
 		perror("mmap() failed on OBMM memdev.\n");
 		exit(EXIT_FAILURE);
