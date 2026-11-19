@@ -14,9 +14,11 @@ OBMM用户态库 (libobmm)
 
 ```c
 #include <libobmm.h>
-int obmm_query_memid_by_pa(unsigned long pa, memid *id, unsigned long *offset);
-int obmm_query_pa_by_memid(memid id, unsigned long offset, unsigned long *pa);
+int obmm_query_memid_by_pa(unsigned long pa, mem_id *id, unsigned long *offset);
+int obmm_query_pa_by_memid(mem_id id, unsigned long offset, unsigned long *pa);
 ```
+
+其中 `mem_id` 定义于 `libobmm.h`，是 `uint64_t` 的 typedef，并非独立的结构体类型；请勿写成 `memid`。
 
 ## 描述 DESCRIPTION
 
@@ -45,9 +47,9 @@ int obmm_query_pa_by_memid(memid id, unsigned long offset, unsigned long *pa);
 
 故障码对应的部分情形如下：
 
-* `ENOENT`：ID为`memid`的OBMM内存不存在。
-* `EINVAL`：`memid`对应的OBMM内存存在，但是`offset` 越界。
-* `EAGAIN`：该内存正处于在线后端切换（见obmm_switch(4)）的过渡状态。切换间隙会保持到控制方调用 `switch_end` 为止，没有超时上限；调用方稍后重试即可，间隙被遗弃时可用 `switch_end(..., 0)` 关闭。
+* `ENOENT`：按物理地址查询（`obmm_query_memid_by_pa`）时，该 `pa` 未落在任何 OBMM 内存的覆盖范围内。内存设备处于 `STRANDED` 状态（已无后端）时同样按“无覆盖”处理，返回 `ENOENT`。按 memid 查询（`obmm_query_pa_by_memid`）时，`memid` 无效或其对应的 OBMM 内存不存在，也返回 `ENOENT`。
+* `EINVAL`：按 memid 查询（`obmm_query_pa_by_memid`）时，`memid` 对应的 OBMM 内存存在，但是 `offset` 越界；或者该内存当前处于 `STRANDED` 状态、没有任何可用后端，此时也会返回 `EINVAL` 而并非 `offset` 越界，请结合内存设备的切换状态判断。各状态下接口的具体行为见 obmm_switch(3) 的状态表。
+* `EAGAIN`：该内存正处于在线后端切换（见obmm_switch(3)）的过渡状态。切换间隙会保持到控制方调用 `switch_end` 为止，没有超时上限；调用方稍后重试即可，间隙被遗弃时可用 `switch_end(..., 0)` 关闭。
 
 ## 约束 CONSTRAINTS
 
