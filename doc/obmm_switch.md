@@ -52,8 +52,8 @@ int obmm_switch_end(mem_id id, int success);
 一次切换由 `obmm_switch_begin_*()` 与 `obmm_switch_end()` 组成:
 
 1. **begin**:内核在锁外构造目标后端,完成校验后,将设备切入切换间隙。begin 成功返回后,设备处于 `AWAIT_READY` 状态:新后端已挂接、数据通路已就绪,旧后端在间隙内由内核继续持有(提交成功后销毁)。设置 *OBMM_SWITCH_FLAG_KEEP_OLD_ALIVE* 才能用 `OBMM_MMAP_FLAG_SWITCH_OLD` 映射旧后端,并使 abort 能够恢复它。
-2. **(gap,用户态控制)**:用户在间隙内完成数据迁移。可以直接对新后端映射访存,也可以通过 `OBMM_MMAP_FLAG_SWITCH_OLD` / `OBMM_MMAP_FLAG_SWITCH_NEW` 映射(见 obmm_shmdev(4))同时访问新旧两块内存做拷贝。
-3. **end**:以 `success = 1` 提交切换,内核完成收尾(脏数据回刷、旧后端销毁、设备回到 `IDLE`);以 `success = 0` 放弃切换,回滚到旧后端。
+2. **(gap,用户态控制)**:用户在间隙内完成数据迁移。间隙内只有 `OBMM_MMAP_FLAG_SWITCH_NEW` 映射会立即安装到新后端,可直接访存;不带 SWITCH 标志的普通映射虽然能 mmap 成功,但其缺页会一直等待到间隙结束才装页,不能在间隙内用于迁移。通过 `OBMM_MMAP_FLAG_SWITCH_OLD` / `OBMM_MMAP_FLAG_SWITCH_NEW` 映射(见 obmm_shmdev(4))可同时访问新旧两块内存做拷贝。
+3. **end**:以 `success = 1` 提交切换,内核异步完成收尾(脏数据回刷、旧后端销毁、设备回到 `IDLE`);以 `success = 0` 放弃切换,回滚到旧后端。end 返回 `0` 只表示收尾已排队,应用需轮询 `switch_state` 到 `IDLE`/`STRANDED` 才能确认最终结果(见"返回值")。
 
 设备切换状态可通过 sysfs 的 `switch_state` 属性观察(见 obmm_shmdev_sysfs(5)):
 
@@ -69,7 +69,7 @@ int obmm_switch_end(mem_id id, int success);
 
 间隙不会自行结束:内核不按定时器替用户态决定"提交还是放弃",只有 `obmm_switch_end()` 能关闭它(与 userfaultfd 的模型一致)。控制器崩溃或遗漏 end 时,设备会一直停在 `AWAIT_READY`:普通映射的缺页会阻塞(可被信号打断),其余接口继续返回 `-EAGAIN` / `-EBUSY`,`switch_state` 仍可通过 sysfs 观察,重启后的控制器可以先看状态再决定。
 
-任何具备 CAP_SYS_ADMIN 的调用方都可以用 `obmm_switch_end(id, 0)` 关闭被遗弃的间隙:若 begin 时设置了 *OBMM_SWITCH_FLAG_KEEP_OLD_ALIVE*,旧后端被恢复;否则(或恢复失败)设备进入 `STRANDED` 终态——此时设备无后端,映射访存收到 SIGBUS;用户应通过 obmm_unimport(3) / obmm_unexport(3) 销毁设备后重建。
+任何具备 CAP_SYS_ADMIN 的调用方都可以用 `obmm_switch_end(id, 0)` 关闭被遗弃的间隙:若 begin 时设置了 *OBMM_SWITCH_FLAG_KEEP_OLD_ALIVE*,旧后端被恢复;否则(或恢复失败)设备进入 `STRANDED` 终态——此时设备无后端,映射访存收到 SIGBUS;用户应通过 obmm_unimport(3) 销毁设备后重建。可切换设备必然是 import 设备;进入 `STRANDED` 后后端为空,销毁接口回退到创建身份,因此 `obmm_unexport(3)` 会因身份不匹配返回 `EINVAL`,无法用于清理 STRANDED 设备(未 STRANDED 时,若设备已切换为 export pool,`obmm_unexport` 也可以销毁它);销毁前应用须先 munmap 所有映射并 close 设备 fd。
 
 #### Input Parameters(obmm_switch_begin_import)
 
@@ -86,7 +86,7 @@ int obmm_switch_end(mem_id id, int success);
 | dcna      | 提供方提供内存的 UB controller 的 CNA 地址,当前仅用于记账 |
 | seid      | 使用方引入内存的 UB controller 的 EID             |
 | deid      | 提供方提供内存的 UB controller 的 EID,当前仅用于记账 |
-| base_dist | 含义同 obmm_import(3)                            |
+| base_dist | 同 obmm_import(3) 的取值范围；但 switch 目标不会上线 NUMA 节点，当前内核只记录该值、不据此配置 NUMA distance |
 
 源设备必须是普通可 mmap 的 import region:NUMA_REMOTE、PREIMPORT 等特殊引入类别,以及创建时不允许 mmap 的 region,均返回 `EOPNOTSUPP`。目标内存的长度必须与设备 `size` 一致(由内核校验)。
 
@@ -106,7 +106,7 @@ int obmm_switch_end(mem_id id, int success);
 
 pxm(本地 NUMA 节点)不在上表中:它由 `desc` 经 vendor 适配得到,与 obmm_export(3) 的分发方式一致,调用方不直接指定。
 
-**desc**:兼具输入与输出。输入侧提供 vendor 信息与 pxm;`seid`/`deid` 会被接受但内核不使用(与 obmm_cmd_export 相同),远端授权以 UMMU token 为准。输出侧,begin 成功后 `desc->tokenid` 与 `desc->addr`(uba)携带新后端的 UMMU 凭证。desc 的 `priv`/`priv_len` 在本接口中被忽略,新后端的私有数据仅来自 priv/priv_len 参数。
+**desc**:兼具输入与输出。输入侧 `deid` 必须填写:libobmm 用它在本地 UB controller 中查找节点,据此解析出 vendor_info 与 pxm(与 obmm_export(3) 的 deid 入参一致;deid 为全 0 时返回 `EINVAL`,查不到节点返回 `ENODEV`),内核会将该 deid 记录在 export 后端并经 `export_info/deid` 暴露。`seid` 会被接受但内核不使用,远端授权以 UMMU token 为准。输出侧,begin 成功后 `desc->tokenid` 与 `desc->addr`(uba)携带新后端的 UMMU 凭证。desc 的 `priv`/`priv_len` 在本接口中被忽略,新后端的私有数据仅来自 priv/priv_len 参数。
 
 **tokenid/uba 分发时序约束**:exp 目标的凭证在 begin 成功时即已产生,但若后续 abort,该后端(连同 token)会被销毁。运行时**不得在 end(success = 1)之前**将 tokenid/uba 分发给远端使用方。另外,begin 把输出结构拷回用户态失败时仍然返回成功,因此调用前应先清零 `desc`,并在使用前校验 `tokenid`/`uba` 非零。
 
@@ -114,7 +114,7 @@ pxm(本地 NUMA 节点)不在上表中:它由 `desc` 经 vendor 适配得到,与
 
 **id**:待收尾的内存设备编号。
 
-**success**:`1` 提交——内核回刷两侧脏数据、销毁旧后端(若保活)、提交新私有数据,设备回到 `IDLE`;`0` 放弃——若 begin 设置了 *KEEP_OLD_ALIVE*,恢复旧后端(包括 abort 期间被映射过的旧内存的回刷),否则设备进入 `STRANDED`。
+**success**:`1` 提交——内核异步回刷两侧脏数据、销毁旧后端(若保活)、提交新私有数据,最终设备回到 `IDLE`;`0` 放弃——若 begin 设置了 *KEEP_OLD_ALIVE*,异步恢复旧后端(包括 abort 期间被映射过的旧内存的回刷),否则设备进入 `STRANDED`。无论提交还是放弃,`obmm_switch_end()` 返回 `0` 都不代表收尾已完成:应用必须轮询 `switch_state`,直到变为 `IDLE`(提交成功或恢复成功)或 `STRANDED`(恢复失败/未保活),再执行后续清理或分发凭证。
 
 #### 切换间隙内的其它接口行为
 
@@ -123,28 +123,28 @@ pxm(本地 NUMA 节点)不在上表中:它由 `desc` 经 vendor 适配得到,与
 | mmap(2)(普通,不带 SWITCH 标志) | 允许,装页推迟到间隙结束 | 允许,首次访存 SIGBUS |
 | obmm_set_ownership(3) | -EAGAIN | -EIO |
 | obmm_query_memid_by_pa(3) / obmm_query_pa_by_memid(3) | -EAGAIN | 正常(无后端,按无覆盖/越界处理) |
-| sysfs 身份类属性(type、backend_type、import_info/、export_info/) | 读取 -EAGAIN | 可读(值为 "-" 或创建身份) |
+| sysfs 身份类属性(type、import_info/、export_info/) | 读取 -EAGAIN | 可读(`type` 为 `-`,身份子目录保留最后一次挂接的组,其中 typed 属性读作 `-`) |
 | 其余 sysfs 属性(switch_state、switch_flush_result、size、priv 等) | 可正常读取 | 可正常读取 |
-| obmm_unimport(3) / obmm_unexport(3) | -EBUSY | 可执行(用于清理 STRANDED 设备) |
+| obmm_unimport(3) / obmm_unexport(3) | -EBUSY | 仅 obmm_unimport(3) 可执行(用于清理 STRANDED 设备);此类设备由 import 创建,obmm_unexport(3) 返回 -EINVAL |
 | 进程间访问(/proc/pid/mem 等) | -EAGAIN | -EIO |
 
 #### 间隙数据迁移映射
 
-mmap(2) 的 `offset` 参数高位携带标志位。切换新增 `OBMM_MMAP_FLAG_SWITCH_OLD` / `OBMM_MMAP_FLAG_SWITCH_NEW` 两个**仅在间隙(AWAIT_READY)内合法**的标志——标志位定义、完整使用约束(互斥、KEEP_OLD_ALIVE 前提、与 HUGETLB_PMD 组合、madvise 降级、THP 依赖)见 obmm_shmdev(4)。各状态下标志的合法性矩阵:
+mmap(2) 的 `offset` 参数高位携带标志位。切换新增 `OBMM_MMAP_FLAG_SWITCH_OLD` / `OBMM_MMAP_FLAG_SWITCH_NEW` 两个**仅在间隙(AWAIT_READY)内合法**的标志——标志位定义、完整使用约束(互斥、KEEP_OLD_ALIVE 前提、与 HUGETLB_PMD 组合、MADV_DONTNEED 不可用)见 obmm_shmdev(4)。各状态下标志的合法性矩阵:
 
-| offset 标志组合 | IDLE | AWAIT_READY | 其它切换状态 |
-| --- | --- | --- | --- |
-| 无(普通映射) | 首访缺页时装页 | 推迟到间隙结束(fault 等待) | 推迟到间隙结束 |
-| SWITCH_NEW | -EINVAL | 立即安装到新后端 | -EINVAL |
-| SWITCH_OLD | -EINVAL | 立即安装到旧后端(要求 begin 设置了 KEEP_OLD_ALIVE) | -EINVAL |
-| SWITCH_OLD \| SWITCH_NEW | -EINVAL(互斥) | -EINVAL | -EINVAL |
-| 任一 SWITCH 标志 \| HUGETLB_PMD | — | 可组合,按 PMD 粒度安装 | — |
+| offset 标志组合 | IDLE | AWAIT_READY | SWAPPING/FINISHING | STRANDED |
+| --- | --- | --- | --- | --- |
+| 无(普通映射) | 首访缺页时装页 | 推迟到间隙结束(fault 等待) | 推迟到间隙结束 | 允许映射,首次访存 SIGBUS |
+| SWITCH_NEW | -EINVAL | 立即安装到新后端 | -EINVAL | -EINVAL |
+| SWITCH_OLD | -EINVAL | 立即安装到旧后端(要求 begin 设置了 KEEP_OLD_ALIVE) | -EINVAL | -EINVAL |
+| SWITCH_OLD \| SWITCH_NEW | -EINVAL(互斥) | -EINVAL | -EINVAL | -EINVAL |
+| 任一 SWITCH 标志 \| HUGETLB_PMD | — | 可组合,按 PMD 粒度安装 | — | — |
 
 ## 返回值 RETURN VALUE
 
 三个函数成功时返回 `0`。
 
-失败时返回 `-1`,详细的错误类型存储在`errno`中。`obmm_switch_end()` 与内核收尾 worker 竞争时返回 `-1` 且 errno 为 `EAGAIN`,该重试由调用方负责,收敛到成功或 `ESTALE`(见"错误")。`obmm_switch_begin_export()` 成功时额外通过 `desc->tokenid`、`desc->addr` 输出新后端的 UMMU 凭证。
+失败时返回 `-1`,详细的错误类型存储在`errno`中。`obmm_switch_end()` 需要获取设备的 `state_mutex`,与内核收尾 worker 或另一个 `switch_end` 竞争时返回 `-1` 且 errno 为 `EAGAIN`,该重试由调用方负责,收敛到成功或 `ESTALE`(见"错误")。`obmm_switch_end()` 是**异步**的:返回 `0` 只表示收尾已排队,应用必须轮询 sysfs 的 `switch_state` 直到 `IDLE`(提交完成)或 `STRANDED`(后端丢失)才能确认最终结果。`obmm_switch_begin_export()` 成功时额外通过 `desc->tokenid`、`desc->addr` 输出新后端的 UMMU 凭证。
 
 ## 错误 ERRORS
 
@@ -154,11 +154,16 @@ obmm_switch_begin_import() / obmm_switch_begin_export():
 
 * `EPERM`:调用方无 CAP_SYS_ADMIN 权限。
 * `EFAULT`:参数拷贝失败。
-* `EINVAL`:参数形状错误——flags 含无效标志位、保留字段非零、target_type 非法、import 目标地址未按基础粒度对齐、export 目标 size 表非 OBMM_MEMSEG_SIZE 整数倍或总和与设备 size 不符、node_count 越界、priv_len 超出 `OBMM_MAX_PRIV_LEN` 等。
+* `EINVAL`:参数形状错误——flags 含无效标志位、保留字段非零、target_type 非法、import 目标地址未按基础粒度对齐、export 目标 size 表非 OBMM_MEMSEG_SIZE 整数倍或总和与设备 size 不符、node_count 越界、pxm 越界或与内存节点跨 socket、priv_len 超出 `OBMM_MAX_PRIV_LEN` 等;新后端能力不足以覆盖设备已授予的 entitlement 也返回该错误。
 * `ENOENT`:`id` 对应的内存设备不存在。
-* `ENODEV`:export 目标的 pxm 节点不在线或非本地节点;import 目标的 scna 不对应任何 UB controller,或与 seid 不匹配。
+* `ENODEV`:export 目标 size 表中非零项所在的本地 NUMA 节点离线或非本地,或该节点没有可用的内存分配器;import 目标的 scna 不对应任何 UB controller,或与 seid 不匹配。
 * `ENOMEM`:后端构造内存不足。
-* `EEXIST` / `EOPNOTSUPP` / `EIO` / `EBUSY`:设备状态不允许——间隙已开启、存在不兼容的映射等。
+* `EBUSY`:设备状态不是 `IDLE`——已有间隙尚未结束,或正在切换。
+* `EOPNOTSUPP`:源设备不是普通可 mmap 的 import region(NUMA_REMOTE、PREIMPORT 或创建时禁止 mmap)。
+* `EEXIST`:import 目标 PA 区间已被其它 region 占用。
+* `EIO`:begin 内部 quiesce 竞争(内核 WARN 路径,罕见)。
+* `EOVERFLOW`:export 目标 size 表求和溢出。
+* `ENOTRECOVERABLE`:新后端构造失败(import 目标回滚不完整,或 export pool 内部资源分配失败),region 保持不变。
 
 obmm_switch_end():
 
@@ -166,7 +171,7 @@ obmm_switch_end():
 * `EFAULT`:参数拷贝失败。
 * `EINVAL`:success/reserved 非法。
 * `ENOENT`:`id` 对应的内存设备不存在。
-* `EAGAIN`:与内核收尾 worker 竞争(收尾临界区可达数百毫秒),调用方重试即可,最终收敛。
+* `EAGAIN`:`state_mutex` 竞争——内核收尾 worker 或另一个 `switch_end` 正持有锁(收尾临界区可达数百毫秒),调用方重试即可,最终收敛到成功或 `ESTALE`。
 * `ESTALE`:间隙已结束——重复 end,或该间隙已被其他调用者收尾。
 
 ## 约束 CONSTRAINTS
@@ -191,11 +196,11 @@ export 目标的 tokenid/uba 不得在 end(success = 1)之前分发给远端使�
 
 切换能力也可以不经过 libobmm,直接对 `/dev/obmm` 设备使用 `OBMM_CMD_SWITCH_BEGIN`(_IOWR('x', 8)) / `OBMM_CMD_SWITCH_END`(_IOW('x', 9)) ioctl(2) 驱动,参数结构与上述 libobmm 接口一一对应(联合体 target_type 选择 import/export pool 分支;所有保留字段、联合体内 pad 及 exp.size[] 未使用的尾随表项必须为 0)。
 
-切换相关 sysfs 属性(`switch_state`、`switch_flush_result`、`backend_type`)与目录身份子目录跟随切换的行为(提交后互换、过渡期身份类属性返回 `-EAGAIN`),统一见 obmm_shmdev_sysfs(5) 的"目录身份与在线切换"一节;`priv` 在切换期间保持旧值,提交后才生效新值。
+切换相关 sysfs 属性(`switch_state`、`switch_flush_result`、`type`;`type` 为字符串,取值 `import`/`export`/`-`)与目录身份子目录跟随切换的行为(提交后互换、过渡期身份类属性返回 `-EAGAIN`),统一见 obmm_shmdev_sysfs(5) 的"目录身份与在线切换"一节;`priv` 在切换期间保持旧值,提交后才生效新值。
 
 ## 样例 EXAMPLES
 
-以下样例将一段 import 内存在线切换为本地 export pool 内存,并在间隙内完成数据迁移。错误处理仅展示 abort 路径,其余从简。
+以下样例将一段 import 内存在线切换为本地 export pool 内存,并在间隙内完成数据迁移。错误处理展示了 abort 路径、`-EAGAIN` 重试与异步收尾轮询,其余从简。
 
 ```c
 #include <stdio.h>
@@ -203,20 +208,53 @@ export 目标的 tokenid/uba 不得在 end(success = 1)之前分发给远端使�
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <errno.h>
 #include <sys/mman.h>
 #include <libobmm.h>
 
-static int migrate_import_to_pool(mem_id id, size_t size)
+/* 轮询 switch_state,等待异步收尾落到终态:0=IDLE,-1=STRANDED/读失败 */
+static int wait_switch_terminal(mem_id id)
+{
+	char path[128], buf[16];
+	int fd, n, state;
+
+	snprintf(path, sizeof(path),
+		 "/sys/devices/obmm/obmm_shmdev%lu/switch_state", id);
+	for (;;) {
+		fd = open(path, O_RDONLY);
+		if (fd < 0)
+			return -1;
+		n = read(fd, buf, sizeof(buf) - 1);
+		close(fd);
+		if (n <= 0)
+			return -1;
+		buf[n] = '\0';
+		state = atoi(buf);
+		if (state == 0)		/* IDLE:收尾完成 */
+			return 0;
+		if (state == 4) {	/* STRANDED:后端丢失 */
+			errno = EIO;
+			return -1;
+		}
+		usleep(1000);
+	}
+}
+
+static int migrate_import_to_pool(mem_id id, size_t size,
+				  const uint8_t deid[16])
 {
 	struct obmm_switch_export_target target = {0};
 	struct obmm_mem_desc desc = {0};
 	char path[128];
-	void *src, *dst;
-	int fd;
+	void *src = MAP_FAILED, *dst = MAP_FAILED;
+	int fd = -1;
 
 	target.size[0] = size;	/* 单节点,和为设备 size */
 	target.node_count = 1;
-	/* desc 提供 vendor 信息与 pxm(同 obmm_export(3));seid/deid 接受但被内核忽略 */
+	/* desc.deid 供 libobmm 解析 vendor_info 与 pxm(同 obmm_export(3)),
+	 * 内核仅记录并通过 export_info/deid 暴露;seid 内核忽略。
+	 * deid 全 0 时 libobmm 返回 EINVAL,故不能省略。 */
+	memcpy(desc.deid, deid, sizeof(desc.deid));
 
 	if (obmm_switch_begin_export(id, OBMM_SWITCH_FLAG_KEEP_OLD_ALIVE,
 				     &target, &desc, NULL, 0)) {
@@ -244,14 +282,34 @@ static int migrate_import_to_pool(mem_id id, size_t size)
 	munmap(src, size);
 	munmap(dst, size);
 	close(fd);
+	fd = -1;
+	src = dst = MAP_FAILED;
 
-	/* 提交切换;与内核收尾 worker 竞争得到的 -EAGAIN 由调用方重试 */
-	while (obmm_switch_end(id, 1) == -1 && errno == EAGAIN)
+	/* 提交切换;state_mutex 竞争得到的 -EAGAIN 由调用方重试,
+	 * 任何其它 errno(如 ESTALE:间隙已结束)都视为失败 */
+	for (;;) {
+		if (obmm_switch_end(id, 1) == 0)
+			break;
+		if (errno != EAGAIN)
+			return -1;
 		usleep(1000);
-	return 0;
+	}
+	/* end 返回 0 只表示收尾已排队:轮询 switch_state 到 IDLE/STRANDED */
+	return wait_switch_terminal(id);
 
 abort:
-	obmm_switch_end(id, 0);	/* 放弃切换:KEEP_OLD_ALIVE 保证旧后端恢复 */
+	if (dst != MAP_FAILED)
+		munmap(dst, size);
+	if (src != MAP_FAILED)
+		munmap(src, size);
+	if (fd >= 0)
+		close(fd);
+	/* 放弃切换:KEEP_OLD_ALIVE 保证旧后端恢复;失败时设备进入 STRANDED。
+	 * abort 的收尾同样是异步的,等设备落定后再做拆除。 */
+	if (obmm_switch_end(id, 0))
+		perror("obmm_switch_end(abort)");
+	else
+		(void)wait_switch_terminal(id);
 	return -1;
 }
 ```

@@ -31,7 +31,7 @@ OBMM 组件包含用户态库 libobmm.so 和内核模块 obmm.ko（详见obmm(4)
 | obmm_switch_begin_export | 将内存设备的后端在线切换为一段新的本地导出内存       |
 | obmm_switch_end          | 提交或放弃一次在线切换                               |
 
-详见 obmm_switch(4)。
+详见 obmm_switch(3)。
 
 ### 预上线内存
 
@@ -75,7 +75,7 @@ struct obmm_mem_desc {
 	uint32_t dcna;
 	uint16_t priv_len;
 	uint8_t  priv[];
-}
+};
 ```
 
 该数据结构是组网范围内的一段支持跨host访问的内存的通用描述。
@@ -102,28 +102,28 @@ struct obmm_mem_desc {
 **seid**
 
 * 内存提供方：忽略。
-* 内存使用方：入参，指示本节点访问目标内存时，使用的IODie。
+* 内存使用方：入参，本节点访问目标内存时使用的 UB controller 的 16 字节 EID。
 
 **deid**
 
-* 内存提供方：入参，指示内存借出时，使用的IODie。
+* 内存提供方：入参，指示内存借出时，使用的 UB controller 的 EID。
 * 内存使用方：入参，仅记录。
 
 **scna**
 
 * 内存提供方：忽略。
-* 内存使用方：入参，指示本节点访问目标内存时，使用的IODie。
+* 内存使用方：入参，seid 所指本端 UB controller 的 primary CNA 地址，必须与 seid 指向同一个 controller；两者不匹配时 libobmm 返回 `ENODEV`。
 
 **dcna**
 
 * 内存提供方：忽略。
-* 内存使用方：入参，仅记录。
+* 内存使用方：入参，提供方 UB controller 的 CNA 地址，仅记录。
 
 **priv_len 和 priv**
 
 内存专属的黑盒私有数据，用户可以在创建内存时传入，然后从 OBMM sysfs 中读出，读出方法详见 obmm_shmdev_sysfs(5) 。
 
-在提供方，私有数据会被透传给UMMU driver。
+私有数据保存在 OBMM region 中，仅通过 sysfs 的 `priv`/`priv_len` 属性读出，不参与数据通路配置；真正传给 UMMU（UMMU driver）的是 libobmm 根据 `deid` 生成的 vendor 数据，与用户 `priv` 无关。
 
 priv_len: 用户私有数据的长度。
 
@@ -150,35 +150,35 @@ struct obmm_preimport_info {
 };
 ```
 
-该数据结构仅在使用方使用。与 `struct obmm_mem_desc` 相比，`struct obmm_preimport_info` 是对远端内存的一个部分描述。通常只限定了待上线内存需使用的数据链路，但没有精确框定地址范围。是一个部分描述。
+该数据结构仅在使用方使用，且不依赖内存导出时生成的完整信息。`<pa, length>` 不是可以随意指定的部分描述：它是一段按 `memory_block_size_bytes()`（4K/16K 页为 128MB，64K 页为 512MB）对齐的预留区间，既是 `obmm_unpreimport` 的精确匹配键，也是实际上线区间的上界。实际引入时，`obmm_import` 的 `[pa, length)` 必须落在该预留区间内，不能越界、不能与已占用块重复，且 `scna`/`dcna`/`seid`/`deid` 必须与预上线时完全一致。
 
-基于该部分描述，OBMM 可以提前创建一个 NUMA 节点。实际上线时仅需将实际借入的内存“注入”该 NUMA 节点，从而加速关键路径上的软件流程。
+基于该预留描述，OBMM 可以提前创建一个 NUMA 节点。实际上线时仅需将实际借入的内存“注入”该 NUMA 节点，从而加速关键路径上的软件流程。
 
-本节仅介绍字段含义。具体的配置方法和参数功能与场景强相关，详见 obmm_preimport(3), obmm_unpreimport(4)。
+本节仅介绍字段含义。具体的配置方法和参数功能与场景强相关，详见 obmm_preimport(3), obmm_unpreimport(3)。
 
 **pa**
 
-入参，预上线内存的起始物理地址。
+入参，预上线内存的起始物理地址，必须按 `memory_block_size_bytes()` 对齐。
 
 **length**
 
-入参，预上线内存的总长度。
+入参，预上线区间的总长度，必须按 `memory_block_size_bytes()` 对齐。
 
 **scna**
 
-入参，指示本节点访问目标内存时，使用的IODie。
+入参，seid 所指本端 UB controller 的 primary CNA 地址，必须与 seid 指向同一个 controller；两者不匹配时 libobmm 返回 `ENODEV`。
 
 **dcna**
 
-入参，指示本节点访问目标内存时，经过的提供方IODie。
+入参，提供方 UB controller 的 CNA 地址，仅用于记账。
 
 **seid**
 
-入参，指示本节点访问目标内存时，使用的IODie。
+入参，本节点访问目标内存时使用的 UB controller 的 16 字节 EID；预上线与实际上线时必须一致。
 
 **deid**
 
-入参，指示内存借出时，使用的IODie。
+入参，提供方 UB controller 的 EID；预上线与实际上线时必须一致。
 
 **base_dist**
 
@@ -190,7 +190,7 @@ struct obmm_preimport_info {
 
 **priv_len 和 priv**
 
-入参：用于共同描述priv数据。
+入参：忽略（预留字段，当前内核不使用）。
 
 ## 使用模型：借用与共享
 
@@ -201,21 +201,21 @@ struct obmm_preimport_info {
 | 借用 | 每段内存只支持一个使用方独占访问<br>必须为 cacheable 属性<br>使用 remote NUMA node 管理远端内存 | madvise, mbind, move_pages, numactl 等 |
 | 共享 | 每段内存理论上可以让多方交替使用<br>通过 mmap 字符设备映射内存 | mmap                                   |
 
-应用通过导出和引入的 flags 来控制自己的使用模型。
+应用通过导出和引入的 flags 来控制自己的使用模型：借用对应 `OBMM_IMPORT_FLAG_NUMA_REMOTE`（不可 mmap）；共享对应 `OBMM_IMPORT_FLAG_ALLOW_MMAP`（引入侧）或 `OBMM_EXPORT_FLAG_ALLOW_MMAP`（导出侧），允许通过 mmap 映射。两个 import flag 互斥，必须且只能指定一个，详见 obmm_import(3)、obmm_export(3)。
 
 当应用使用借用模型或使用 noncacheable 属性时，用户无需关心一致性模型，所有的用户均具备读写权限，且无法使用 obmm_set_ownership(3) 调整。
 
 当应用通过共享模型使用 cacheable 内存时。需要考虑一致性模型。
 
-在主流配置下，一致性模型的OBMM基础粒度为 2M，详见基础粒度章节。
+一致性/权限的记账粒度等于该 region 的 mmap 粒度：默认（mmap 偏移不带 `OBMM_MMAP_FLAG_HUGETLB_PMD`）为 `PAGE_SIZE`；使用 `OBMM_MMAP_FLAG_HUGETLB_PMD` 做 PMD 映射时为 `PMD_SIZE`（4K 页时为 2MB）。详见 obmm_shmdev(4)。
 
-对每段OBMM基础粒度的内存，用户可能有空（`PROT_NONE`）、读（`PROT_READ`）、读写（`PROT_WRITE`）三种权限之一。
+对每段上述粒度的内存，用户可能有空（`PROT_NONE`）、读（`PROT_READ`）、读写（`PROT_WRITE`）三种权限之一。
 
 * 内存导出 / 引入后，权限为空
 * 应用映射时，可通过 mmap(2) 的`prot` 参数改配权限
-* 应用映射后，可通过 obmm_set_ownership(3) 切换当前权限
-* 应用通过 munmap(2)，权限不会发生变更
-* obmm_unimport(3) 时，会先自动切换为空权限，然后退出
+* 应用映射后，可通过 obmm_set_ownership(3) 切换当前权限；非 PMD 映射也可按页调用
+* 应用通过 munmap(2) 释放映射时，OBMM 扣减该映射持有的权限计数；全部映射释放后，对应内存回到空权限
+* 调用 obmm_unimport(3)/obmm_unexport(3) 前，应用必须先 munmap(2) 全部映射并 close(2) 全部 obmm_shmdev fd，否则内核返回 `-EBUSY`。内核不会代替用户撤销映射或修改权限；若需满足一致性约束，应在释放前由应用自行把权限置空
 
 在同一时刻，所有访问该内存的各 host（包括提供方和使用方）只能处于如下两种状态之一，否则有数据不一致的风险。
 
@@ -236,17 +236,11 @@ OBMM 各项操作的粒度受多方限制：
 | 双方   | 进程页表                        | 共享                 | PAGE_SIZE               | 4K                    | 16K, 64K                           |
 | 双方   | 缓存 home agent                 | 全部                 | 128B                    | 128B                  | 128B                               |
 
-定义**OBMM基础粒度**为提供方、使用方能一致地传递数据的最小粒度。该粒度为以下三者的最小公倍数：
+定义**OBMM基础粒度**为提供方、使用方能一致地传递数据的最小粒度。该粒度由内核固定为 2MB（`OBMM_BASIC_GRANU` = `SZ_2M`），与 `PAGE_SIZE`、`PMD_SIZE` 无关：`obmm_export` 要求每个 NUMA 节点的内存大小为 2MB 的整数倍；`obmm_import`/`obmm_preimport` 要求物理地址基址和长度为 2MB 的整数倍。表格首行的 32M（16K 页）/512M（64K 页）是提供方内核线性映射页表与分配器自身的粒度（等于对应内核页大小下的 `PMD_SIZE`），并不改变 import 的 2MB 最小对齐要求；`obmm_export_useraddr` 例外，仍要求按 `PMD_SIZE` 对齐，且映射粒度不小于 `PMD_SIZE`。
 
-* 提供方内核线性映射页大小
-* 进程页大小
-* 缓存更新粒度
+OBMM 所有接口（obmm_export，obmm_import，obmm_preimport）皆受 OBMM 基础粒度的限制。
 
-因为后两者总小于提供方内核线性映射页的大小，因此这一粒度的值为 PMD_SIZE。
-
-OBMM 所有接口（obmm_export，obmm_import，obmm_preimport）皆受OBMM基础粒度的限制。
-
-导出接口（obmm_export）和引入（obmm_import, obmm_preimport）受上表中适用粒度的最大值限制。
+导出接口（obmm_export）和引入（obmm_import, obmm_preimport）还受上表中适用粒度的最大值限制，例如 NUMA_REMOTE 模式下 import 的地址和长度需按 `memory_block_size_bytes()`（4K/16K 页为 128MB，64K 页为 512MB）对齐。
 
 除非函数API中特别说明，上述粒度既适用于长度，也适用于相关的地址或偏移量对齐。
 
@@ -256,8 +250,22 @@ OBMM 所有接口（obmm_export，obmm_import，obmm_preimport）皆受OBMM基�
 
 用户需要注意按以下流程时序进行配置。违反该时序，可能导致进程崩溃、数据不一致、芯片异常等多种非预期现象。
 
-1. 提供方export
-2. 使用方import
-3. 数据访问
-4. 使用方unimport
-5. 提供方unexport
+1. （可选）使用方预上线（preimport）：预上线不依赖导出产物，可以在导出之前完成；使用完毕后通过 unpreimport 释放
+2. 提供方 export
+3. 使用方 import（若已预上线，需指定 `OBMM_IMPORT_FLAG_PREIMPORT`，且地址段命中预留区间）
+4. 数据访问
+5. 使用方 unimport
+6. 提供方 unexport
+
+其中：
+
+* 执行步骤 5/6 前，本端必须先 munmap(2) 全部映射并 close(2) 全部 obmm_shmdev fd，否则内核返回 `-EBUSY`。
+* 执行步骤 6 前，提供方必须确认所有远端使用方已完成 unimport 并停止访问。内核无法感知远端使用者，不会替用户检查；否则远端进程可能崩溃或产生数据不一致。
+* 在线切换使用独立时序：obmm_switch_begin_import/obmm_switch_begin_export → 数据迁移（gap）→ obmm_switch_end，详见 obmm_switch(3)。obmm_switch_end 是异步的，返回 0 只表示收尾已排队，应用必须轮询 sysfs 的 `switch_state`，直到其变为 IDLE 或 STRANDED。
+
+## 生命周期与 ABI 约束
+
+* **region 不与创建进程绑定**：内核不在 region 上记录创建者 pid/cred，进程退出或崩溃不会自动回收已 export/import 的 region。应用异常退出后，导出的本地内存和 remote NUMA 节点会持续占用，必须由管理员或守护进程凭 mem_id 显式 unexport/unimport 清理。
+* **销毁接口没有创建者校验**：任何能够打开 `/dev/obmm`（默认仅 root）的进程都可以凭 mem_id 销毁其他进程创建的 region。多服务共机时应避免共享 root 权限，或在管理面自行记录 mem_id 的归属。
+* **模块卸载前置条件**：libobmm 在进程内缓存 `/dev/obmm` 的 fd 且不提供关闭接口，每个 region 也持有模块引用。因此 `rmmod obmm` 前必须结束所有使用 libobmm 的进程，并销毁全部 region，否则返回 `EBUSY`。
+* **仅支持 64 位用户态**：内核 UAPI 使用原生指针布局且不提供 compat ioctl。32 位进程调用会因 ioctl 命令号/结构体大小不匹配得到 `ENOTTY`，或发生地址截断，请勿在 32 位用户态中使用 libobmm。

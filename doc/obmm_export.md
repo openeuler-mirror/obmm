@@ -35,14 +35,14 @@ mem_id obmm_export_useraddr(int pid, void* va, size_t length, unsigned long flag
 length需要满足如下要求：
 
 1. length[i]必须按OBMM基础粒度对齐，同时满足内存分配器与UMMU的粒度约束。
-2. length[i]非零时，其对应的 NUMA 节点 i 必须为有效的本端 NUMA 节点，且所有这样的 NUMA 节点 i 必须属于同一个CPU Socket。
+2. length[i]非零时，其对应的 NUMA 节点 i 必须为有效的本端 NUMA 节点，且所有这样的 NUMA 节点 i 必须属于同一个CPU Socket；同时，desc.deid 指定的 UBC 所在 NUMA 节点也必须与这些节点处于同一个CPU Socket，否则返回 EINVAL。
 3. length的所有元素之和大于零。
 
 **flags**：导出内存的属性，支持以下 flag
 *OBMM_EXPORT_FLAG_FAST*：仅从内存缓冲池的已清零内存中进行分配。若可用内存不足，不会向系统申请内存，直接返回错误。可通过 obmm_mempool_sysfs(5) 查看各 NUMA 节点的 `available_cleared` 值，确认可用内存是否满足需求。
 *OBMM_EXPORT_FLAG_ALLOW_MMAP*: 允许通过mmap对应memid的字符设备的方式，使用该内存。
 
-**desc**: 指向一个OBMM内存描述符，用于传入内存的属性参数，同时接收地址信息。其中deid、priv_len、priv域段为入参，addr，length，tokenid域段为出参，其他参数会被忽略。
+**desc**: 指向一个OBMM内存描述符，用于传入内存的属性参数，同时接收地址信息。其中deid、priv_len、priv域段为入参，addr，length，tokenid域段为出参，其他参数会被忽略。deid 为必填项，必须是本机一个已注册 UBC 的完整 16 字节 EID（不能全零，可从该 UBC sysfs 的 `eid` 属性获取）；deid 全零返回 EINVAL，在本机找不到对应 UBC 返回 ENODEV。
 
 ```c
 struct obmm_mem_desc {
@@ -50,7 +50,7 @@ struct obmm_mem_desc {
 	uint64_t length; // 出参：返回导出内存的总大小
 	/* 128bit eid, ordered by little-endian */
 	uint8_t seid[16]; // export流程忽略
-	uint8_t deid[16];  // 入参：指定借出内存所在bus controller的eid
+	uint8_t deid[16];  // 入参：指定借出内存所在bus controller的eid（必填，本机已注册UBC的16字节EID，不能全零）
 	uint32_t tokenid; // 出参：返回此次export生成的tokenid
 	uint32_t scna; // export流程忽略
 	uint32_t dcna; // export流程忽略
@@ -66,22 +66,22 @@ struct obmm_mem_desc {
 结束使用时，obmm_export_useraddr 创建的内存，需要用 obmm_unexport(3) 释放。释放时，这段内存中的数据不会被清理。
 
 **限制**
-- 该接口调用的目标地址段须按照PMD_SIZE对齐，并且其中的映射粒度需要最小是PMD_SIZE，且不低于UMMU粒度约束。目前可以支持hugetlb，或者THP方式的映射。
+- 该接口调用的目标地址段须按照PMD_SIZE对齐，并且其中的映射粒度需要最小是PMD_SIZE，且不低于UMMU粒度约束。目前仅支持 hugetlbfs 大页（PMD/PUD 粒度，内核通过 `PageHuge()` 检查），不支持 THP/匿名大页；非 hugetlb 页返回 EOPNOTSUPP。
 - 该接口调用后，目标内存会被pin住。
 - 该接口调用后，直到unexport执行前，内核态访问目标内存会造成宿主机panic。
 - 该接口只能导出权限为可读可写的地址空间。
-- 该接口导出的内存，必须在同一个socket内。
+- 该接口导出的内存，以及 `desc.deid` 指定的 UBC，必须在同一个socket内，否则返回 EOPNOTSUPP。
 #### Input Parameters
 
 **pid**: 指定进程的pid。pid=0 时指定当前调用接口的进程。
 **va**: 目标内存虚拟地址段的首指针。
 **length**: 目标内存的长度。
 length需要满足如下要求：
-1. length必须按OBMM基础粒度对齐，同时满足内存分配器与UMMU的粒度约束。
+1. length 必须按 PMD_SIZE 对齐（不能为 0），同时满足 UMMU 的粒度约束；否则返回 EINVAL。
 
 **flags**: 导出内存属性。（预留，当前未使用，必须配置为0）
 
-**desc**: 指向一个OBMM的内存描述符，用于传入内存的属性参数，同时接收地址信息。其中deid、priv_len、priv域段为入参，addr，length，tokenid域段为出参，其他参数会被忽略。
+**desc**: 指向一个OBMM的内存描述符，用于传入内存的属性参数，同时接收地址信息。其中deid、priv_len、priv域段为入参，addr，length，tokenid域段为出参，其他参数会被忽略。deid 为必填项，必须是本机一个已注册 UBC 的完整 16 字节 EID（不能全零，可从该 UBC sysfs 的 `eid` 属性获取）；deid 全零返回 EINVAL，在本机找不到对应 UBC 返回 ENODEV。
 
 ```c
 struct obmm_mem_desc {
@@ -89,7 +89,7 @@ struct obmm_mem_desc {
 	uint64_t length; // 出参：返回导出内存的总大小
 	/* 128bit eid, ordered by little-endian */
 	uint8_t seid[16]; // export流程忽略
-	uint8_t deid[16];  // 入参：指定借出内存所在bus controller的eid
+	uint8_t deid[16];  // 入参：指定借出内存所在bus controller的eid（必填，本机已注册UBC的16字节EID，不能全零）
 	uint32_t tokenid; // 出参：返回此次export生成的tokenid
 	uint32_t scna; // export流程忽略
 	uint32_t dcna; // export流程忽略
@@ -106,23 +106,42 @@ struct obmm_mem_desc {
 
 ## 错误 ERRORS
 
+### obmm_export
+
 故障码对应的部分情形如下：
 * `EINVAL` :
   * `length`、`desc` 输入参数不能为 NULL；
   * 私有数据长度超出`OBMM_MAX_PRIV_LEN`限制(`OBMM_MAX_PRIV_LEN` == 512)；
-  * 每个 NUMA 节点内存大小`OBMM_BASIC_GRANU` == 2 MB整数倍；
-  * 确保所有 NUMA 节点属于同一 cpu socket 中；
+  * 每个 NUMA 节点内存大小不是 `OBMM_BASIC_GRANU`（2 MB）的整数倍；
+  * 确保所有 NUMA 节点属于同一 cpu socket 中（包括 `desc.deid` 指定的 UBC）；
   * 每个非零节点内存没有对齐到`OBMM_MEMSEG_SIZE`；
   * 导出内存总和大小不能为 0；
-  * obmm_export_user 不允许配置flags为OBMM_EXPORT_FLAG_ALLOW_MMAP或OBMM_EXPORT_FLAG_FAST；
+  * `desc.deid` 全零；
   * 不允许使用未经OBMM定义的export flags（以OBMM_EXPORT_FLAG开头）；
-* `ENODEV`: 只允许从已上线的本地NUMA节点分配内存。
+* `ENODEV`: 只允许从已上线的本地NUMA节点分配内存；`desc.deid` 无法匹配本机任何已注册 UBC。
 * `ENOMEM`：系统内存不足。
 * `EEXIST:` 申请`region` 已存在。
 * `E2BIG`：请求的 NUMA 数量大于系统支持最大值。
 * `ENOSPC`：指定范围内无可用 `memid`。
 * `EOVERFLOW`：内存溢出，请求的内存总大小超出`unsigned long`的范围。
-* `EPERM`: UMMU 设备过多，超出 `MAX_NUM_UMMU_DEVICES`。
+* `EPERM`: UMMU 设备分配失败（`ummu_core_alloc_tdev()` 返回 NULL，例如无可用 UMMU 设备或 TID 分配失败），或 OBMM 模块正在卸载。
+
+### obmm_export_useraddr
+
+故障码对应的部分情形如下：
+* `EINVAL` :
+  * `desc` 输入参数不能为 NULL；
+  * 私有数据长度超出`OBMM_MAX_PRIV_LEN`限制(`OBMM_MAX_PRIV_LEN` == 512)；
+  * `flags` 不为 0（`obmm_export_useraddr` 不允许配置 `OBMM_EXPORT_FLAG_ALLOW_MMAP`、`OBMM_EXPORT_FLAG_FAST` 或其他任何 flag）；
+  * `length` 为 0 或未按 `PMD_SIZE` 对齐；
+  * `desc.deid` 全零；
+* `ENODEV`：`desc.deid` 无法匹配本机任何已注册 UBC（例如对应节点离线或 UBC 未注册）。
+* `EOPNOTSUPP`：待导出的页不是 hugetlbfs 大页（`PageHuge()` 为假，例如 THP/匿名页），或导出内存与 `desc.deid` 指定的 UBC 不在同一 CPU socket。
+* `ESRCH`：`pid` 不存在，或该进程没有 mm。
+* `EFAULT`：pin 用户页失败（例如地址范围不可访问或没有写权限）。
+* `ENOMEM`：内存不足，或只 pin 住了部分页。
+* `EPERM`：UMMU 设备分配失败（`ummu_core_alloc_tdev()` 返回 NULL），或 OBMM 模块正在卸载。
+
 ## 约束 CONSTRAINTS
 
 暂无
@@ -138,11 +157,12 @@ struct obmm_mem_desc {
 ```c
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
 #include <libobmm.h>
 
 #define SZ_2M	(1UL << 21)
 
-int export_interface_demo(uint8_t *deid)
+int export_interface_demo(const uint8_t deid[16])
 {
 	int ret;
 	mem_id id;
@@ -154,7 +174,7 @@ int export_interface_demo(uint8_t *deid)
 	struct obmm_mem_desc desc = {
 		.priv_len = 0
 	};
-	memcpy(desc.deid, &deid, 16);
+	memcpy(desc.deid, deid, 16);
 	/* Export memory from OBMM. */
 	id = obmm_export(length, flags, &desc);
 	if (id == OBMM_INVALID_MEMID) {
@@ -178,8 +198,8 @@ int export_interface_demo(uint8_t *deid)
 }
 ```
 
-下面示例展示如何在当前进程中申请一页 2MB 的大页（hugetlb/THP），
-然后调用 `obmm_export_useraddr` 导出该地址空间。示例中对可能的失败情况做了基本检查；在真实运行环境中，使用者需确保系统已为大页做好配置（例如挂载 hugetlbfs 或启用 THP），且有足够权限。
+下面示例展示如何在当前进程中申请一页 2MB 的 hugetlbfs 大页（通过 `MAP_HUGETLB`），
+然后调用 `obmm_export_useraddr` 导出该地址空间。示例中对可能的失败情况做了基本检查；在真实运行环境中，使用者需确保系统已配置好 hugetlb 大页池（例如挂载 hugetlbfs 或预留 hugetlb 页），且有足够权限。注意 THP/匿名大页不受支持。
 
 ```c
 #include <stdio.h>
@@ -193,7 +213,7 @@ int export_interface_demo(uint8_t *deid)
 
 #define SZ_2M (1UL << 21)
 
-int export_useraddr_interface_demo(uint8_t *deid)
+int export_useraddr_interface_demo(const uint8_t deid[16])
 {
 	size_t size = SZ_2M;
 	void *ptr = MAP_FAILED;
@@ -215,7 +235,7 @@ int export_useraddr_interface_demo(uint8_t *deid)
 	}
 	memset(desc, 0, sizeof(*desc));
 	desc->priv_len = 0;
-	memcpy(desc->deid, &deid, 16);
+	memcpy(desc->deid, deid, 16);
 
 	/* 导出当前进程的这段地址空间（pid=0 表示当前进程） */
 	id = obmm_export_useraddr(0, ptr, size, 0, desc);

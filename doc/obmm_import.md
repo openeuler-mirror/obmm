@@ -25,7 +25,7 @@ mem_id obmm_import(const struct obmm_mem_desc *desc, unsigned long flags, int ba
 
 **地址、长度对齐**
 
-* 传入的地址和内存长度必须按OBMM基础粒度对齐。
+* 传入的地址和内存长度必须按OBMM基础粒度（2MB，`OBMM_BASIC_GRANU`）对齐。
 * NUMA_REMOTE 模式，内存长度和物理地址（如适用）必须按128MB（内核页为4K或16K时）或512MB（内核页为64K时）对齐。
 
 **地址不冲突**
@@ -42,10 +42,10 @@ mem_id obmm_import(const struct obmm_mem_desc *desc, unsigned long flags, int ba
 | addr      | 远端内存对应的物理地址（由配置ubmem decoder的组件提供）     |
 | length    | import的内存大小                              |
 | tokenid   | 忽略                                          |
-| deid      | 提供方提供内存的UB controller的EID，当前仅用于记账 |
-| seid      | 使用方引入内存的UB controller的EID             |
+| deid      | 提供方提供内存的UB controller的EID。非 preimport 时仅记录并呈现在 sysfs；PREIMPORT 时必须与 obmm_preimport(3) 登记的 deid 完全一致，否则失败（EINVAL） |
+| seid      | 使用方引入内存的UB controller的EID。必须是 scna 所属 UB controller 的 EID；seid 无效或与 scna 不匹配时返回 ENODEV |
 | scna      | 使用方引入内存的UB controller的CNA地址          |
-| dcna      | 提供方提供内存的UB controller的CNA地址，当前仅用于记账  |
+| dcna      | 提供方提供内存的UB controller的CNA地址。非 preimport 时仅记录并呈现在 sysfs；PREIMPORT 时必须与 obmm_preimport(3) 登记的 dcna 完全一致，否则失败（EINVAL）  |
 | priv_len  | 私有数据长度                                  |
 | priv      | 私有数据，仅呈现在sysfs中，不影响通路         |
 
@@ -70,7 +70,7 @@ mem_id obmm_import(const struct obmm_mem_desc *desc, unsigned long flags, int ba
 
 * `base_dist`等于0时，新节点到其他本地节点的距离定义为100，新节点到其他远端节点的距离为255。
 * `base_dist`不等于0且小于等于10，或`base_dist`大于255时，接口报非法参数错误。
-* `base_dist`大于11且小于等于255时，新节点到其他远端节点的距离为255，新节点到其他本地的本地节点的距离为： dist(n, n_b) + dist(n_b, n_r) - dist(n_b, n_b)。如果该值大于 255，则定义距离为255。
+* `base_dist`大于10且小于等于255（即11~255）时，新节点到其他远端节点的距离为255，新节点到其他本地的本地节点的距离为： dist(n, n_b) + dist(n_b, n_r) - dist(n_b, n_b)。如果该值大于 255，则定义距离为255。
 
 OBMM引入内存并上线remote NUMA时，如果为直接上线，NUMA distance会根据最后一次上线重新计算并覆写前值。建议应用始终传入相同的base distance以保持NUMA distance稳定。
 
@@ -109,26 +109,29 @@ remote NUMA并不限制从特定CPU package或特定UB die引入，当一个remo
 * `EPERM`：NUMA REMOTE相关错误，较常见的是参数错误、资源占用，以及本地内存不足等，例如：
   * 传入的 *numa 指定了非法的NUMA ID；
   * 模块在加载过程中被卸载；
-  * 创建 Remote NUMA节点失败。
-* `ENODEV`：传入的scna不对应任何UB controller。
+  * 创建 Remote NUMA节点失败；
+  * NUMA_REMOTE 模式下，内存长度或物理地址未按128MB（内核页为4K或16K时）或512MB（内核页为64K时）对齐，导致远端内存上线失败。
+* `ENODEV`：传入的 scna 不对应任何 UB controller；或 seid 不是该 scna 所属 UB controller 的 EID（seid 无效，或 seid 对应 controller 的 primary_cna 与 scna 不匹配）。
 * `EINVAL`：
   * desc 或 flags 为 `OBMM_INVALID_MEMID(0)`；
   * priv_len 的长度超出 `OBMM_MAX_PRIV_LEN`；
   * 申请内存大小不能为零；
   * flags 含有无效标志位；参数 `ALLOW_MMAP`和 `NUMA_REMOTE` 必须且只能指定一个;在指定 `OBMM_IMPORT_FLAG_PREIMPORT` 时，必须指定 `OBMM_IMPORT_FLAG_NUMA_REMOTE`；
   * `base_dist` 不等于0且小于等于10，或大于255；
-  * 传入的地址和内存长度没有按照OBMM基础粒度对齐；pa 为 0 或 pa + size 溢出；
-  * preimport 模式引入的内存，物理地址没有落在节点预留内存中；
+  * 传入的地址和内存长度没有按照OBMM基础粒度（2MB）对齐；pa 为 0 或 pa + size 溢出；
+  * NUMA_REMOTE 模式下，物理地址范围不支持 cacheable 映射；
+  * preimport 模式引入的内存，物理地址命中了预引入范围但请求区间越出其边界，或命中的已登记段属于其它用途（例如已被普通 import 占用）；
   * 导入的 scna、seid、dcna、deid 和预引入时使用 scna、seid、dcna、deid 不匹配。
+* `EFAULT`：preimport 模式引入的内存，物理地址未落在任何已登记的 OBMM 地址段中（查询不到映射信息）。
 * `ENOMEM`: 系统内存不足。
-* `EBUSY`: 物理地址对应内存区间已被占用或冲突。
+* `EBUSY`: 物理地址范围与 iomem 资源树中的其他（非 OBMM）资源冲突。
 * `ENOSPC`：指定范围内无可用 `memid`。
-* `EEXIST`: region 已存在。
+* `EEXIST`: 物理地址区间已被其他 import/preimport 占用：非 preimport 为区间重叠，PREIMPORT 为预引入块已被占用。
 ## 约束 CONSTRAINTS
 
 **地址校验约束**
 
-需要用户保证传入的物理地址范围正确落在UB远端内存的地址范围内。
+需要用户保证传入的物理地址范围正确落在UB远端内存的地址范围内。NUMA_REMOTE 模式还要求该物理地址范围支持 cacheable 映射，否则返回 EINVAL；ALLOW_MMAP 模式允许 cacheable 或 noncacheable 映射。
 
 ## 附注 NOTES
 
@@ -141,6 +144,7 @@ remote NUMA并不限制从特定CPU package或特定UB die引入，当一个remo
 ```c
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <libobmm.h>
 
 int import_demo(unsigned long pa, size_t size, unsigned int scna, uint8_t *seid)

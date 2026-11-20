@@ -4,11 +4,11 @@
 
 obmm_shmdev sysfs ，为 obmm_shmdev(4) 的 sysfs 文件目录。若一段 OBMM 内存的 memid 为 `${id}`，其sysfs 目录所在的路径为`/sys/devices/obmm/obmm_shmdev${id}/` 。
 
-通过 sysfs 目录下有多个只读文本文件和只读二进制文件。每个文件展示了该内存设备的一项属性。可用于维测与调试，不建议用于控制面功能和性能路径。
+sysfs 目录下有多个只读文本文件和只读二进制文件，它们均由内核创建，属主为`root:root`、权限为`0400`，只有 root 或具备`CAP_DAC_OVERRIDE`的进程可读取，非 root 读取会返回`EACCES`。每个文件展示了该内存设备的一项属性。可用于维测与调试，不建议用于控制面功能和性能路径。
 
 ## 目录身份与在线切换
 
-若内核支持在线后端切换（见obmm_switch(4)），目录的身份子目录（`import_info/`或`export_info/`）与`type`属性跟随**当前挂接的后端**：切换提交后子目录会跟随互换（如import切换为export后，`import_info/`消失、`export_info/`出现），`type`同步翻转；后端丢失（STRANDED）时回退为创建身份。切换过渡期间（`switch_state`为SWAPPING/AWAIT_READY/FINISHING），身份类属性（`type`、`backend_type`、`import_info/`与`export_info/`下的全部文件）读取返回`-EAGAIN`（重试即可）；其余属性（含`switch_state`、`switch_flush_result`、`priv`等）切换期间可正常读取。
+若内核支持在线后端切换（见obmm_switch(3)），目录的身份子目录（`import_info/`或`export_info/`）与`type`属性跟随**当前挂接的后端**：切换提交后子目录会跟随互换（如import切换为export后，`import_info/`消失、`export_info/`出现），`type`同步翻转。后端丢失（STRANDED）时`type`读作`-`；此时身份子目录不会被重建，会保留最后一次挂接的组，其中各 typed 属性同样读作`-`。切换过渡期间（`switch_state`为SWAPPING/AWAIT_READY/FINISHING），身份类属性（`type`、`import_info/`与`export_info/`下的全部文件）读取返回`-EAGAIN`（重试即可）；其余属性（含`switch_state`、`switch_flush_result`、`priv`等）切换期间可正常读取。
 
 ## 属性总览
 
@@ -51,8 +51,8 @@ obmm_shmdev${id}/
 通用信息位于 `/sys/devices/obmm/obmm_shmdev${mem_id}/` 的根层级，包含如下内容：
 
 **type**
-类型：文本、字符串（`export`、`import`二者之一）
-描述：`export` 代表该内存为提供方内存，DRAM位于本地，`import` 代表该内存为从远端引入的内存。
+类型：文本、字符串（`export`、`import`，无后端时为`-`）
+描述：`export` 代表该内存为提供方内存，DRAM位于本地，`import` 代表该内存为从远端引入的内存；后端丢失（STRANDED）时读作`-`。
 
 **size**
 类型：文本、十六进制数
@@ -64,7 +64,7 @@ obmm_shmdev${id}/
 
 **priv**
 类型：二进制文件
-描述：内存私有元数据，内容由用户创建内存设备时传入，文件大小为`OBMM_MAX_PRIV_LEN`，其中偏移量超过`priv_len`的部分仍可读取，但其二进制值恒为0。
+描述：内存私有元数据，内容由用户创建内存设备时传入。文件的 stat 大小为`OBMM_MAX_PRIV_LEN`（512 字节），但实际只有前`priv_len`字节可读：读取到`priv_len`处即返回 0 字节（EOF），未写满的部分不会以 0 返回。该文件权限为`0400`，仅 root 可读。需要定长`OBMM_MAX_PRIV_LEN`缓冲区时，由调用方自行清零或补齐。
 
 **allow_mmap**
 类型：文本、十进制数
@@ -72,23 +72,19 @@ obmm_shmdev${id}/
 
 **switch_state**
 类型：文本、十进制数
-描述：内存设备在线后端切换（见obmm_switch(4)）的状态机值，取值`0`–`4`（IDLE/SWAPPING/AWAIT_READY/FINISHING/STRANDED），各状态含义见obmm_switch(4)。
+描述：内存设备在线后端切换（见obmm_switch(3)）的状态机值，取值`0`–`4`（IDLE/SWAPPING/AWAIT_READY/FINISHING/STRANDED），各状态含义见obmm_switch(3)。
 
 **switch_flush_result**
 类型：文本、十进制数
-描述：最近一次记录的切换收尾阶段数据回刷或后端销毁失败的负errno，无失败为`0`；每次switch_begin时清零。用于维测，见obmm_switch(4)。
-
-**backend_type**
-类型：文本、十进制数
-描述：当前挂接的后端类型：`0` import（远端引入内存）、`1` export pool（本地导出内存）、`2` export from user（用户进程导出内存）、`-1` 无后端（切换STRANDED终态或拆除中）。
+描述：自最近一次成功进入切换流程（switch_begin 通过早期校验并完成 quiesce）清零以来，记录的第一条失败负 errno；无失败为`0`，后续错误只记日志、不覆盖该值。来源包括间隙回刷、收尾回刷和后端销毁失败；早期校验失败（如`-EBUSY`、`-EOPNOTSUPP`）不会清零。用于维测，见obmm_switch(3)。
 
 **mmap_granu**
 类型：文本、十进制数
-描述：设备当前的映射粒度：`0` 未映射过、`1` PAGE（4K）、`2` PMD（2M）。设备首次映射时记录，不允许混用粒度。
+描述：设备当前的映射粒度：`0` 未映射过、`1` PAGE（PAGE_SIZE）、`2` PMD（PMD_SIZE）。PMD 大小随内核页大小变化，4K 页为 2M，16K 页为 32M，64K 页为 512M。设备首次映射时记录，之后不会清零，不允许混用粒度。
 
 **mmap_mode**
 类型：文本、十进制数
-描述：设备当前的映射缓存模式：`0` 未映射过、`1` NORMAL（cacheable）、`2` OSYNC（non-cacheable，打开设备时指定了O_SYNC）。
+描述：设备当前的映射缓存模式：`0` 当前无映射（从未映射，或所有映射均已解除）、`1` NORMAL（cacheable）、`2` OSYNC（non-cacheable，打开设备时指定了O_SYNC）。最后一个映射关闭、映射计数归零后，`mmap_mode`会重置为`0`；`mmap_granu`则保留首次映射记录的粒度。
 
 ## 提供方信息
 

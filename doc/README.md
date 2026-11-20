@@ -8,7 +8,7 @@
 
 1. 用户态库接口文档，对应 UNIX man pages section 3
 2. 设备文档，对应 UNIX man pages section 4
-3. sysfs文档，对应 UNIX man pages section 5
+3. sysfs / procfs 文档，对应 UNIX man pages section 5
 
 用户态库接口文档
 
@@ -24,7 +24,7 @@
 | obmm_unpreimport.md   | `obmm_unpreimport()` 接口说明                                |
 | obmm_set_ownership.md | `obmm_set_ownership()` 接口说明                              |
 | obmm_query.md         | `obmm_query_memid_by_pa()`, `obmm_query_pa_by_memid()` 接口说明 |
-| obmm_switch.md        | `obmm_switch_begin_import()`, `obmm_switch_begin_export()`, `obmm_switch_end()` 接口与设备级在线切换说明 |
+| obmm_switch.md        | `obmm_switch_begin_import()`, `obmm_switch_begin_export()`, `obmm_switch_end()` 接口说明 |
 | libobmm-accel.md | libobmm-accel 接口总览、NC 感知多线程拷贝 memcpy_nc_mt 说明 |
 
 
@@ -34,10 +34,9 @@
 | -------------- | ------------------------------------- |
 | obmm.md        | obmm.ko 参数说明与 /dev/obmm 设备说明 |
 | obmm_shmdev.md | obmm_shmdev\${mem_id} 设备使用说明    |
-| obmm_switch.md | 内存设备在线后端切换（switch_begin/switch_end、切换间隙映射）使用说明 |
 
 
-sysfs 文档
+sysfs / procfs 文档
 
 | 文档                    | 内容                                                      |
 | ----------------------- | --------------------------------------------------------- |
